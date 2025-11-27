@@ -356,6 +356,104 @@
     .pos-prices b { color: var(--text-secondary); }
     .pos-prices .liq { color: var(--red); }
 
+    /* Wallet Age */
+    .wallet-age {
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      background: var(--bg-secondary);
+    }
+
+    .wallet-age.brand-new {
+      background: var(--red);
+      color: white;
+      font-weight: 600;
+    }
+
+    .wallet-age.new-wallet {
+      background: var(--yellow);
+      color: var(--bg-primary);
+      font-weight: 500;
+    }
+
+    /* Price Chart */
+    .price-chart {
+      margin: 0.75rem 0;
+      padding: 0.5rem;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+    }
+
+    .price-bar {
+      position: relative;
+      height: 24px;
+      background: linear-gradient(90deg, var(--bg-hover) 0%, var(--bg-card) 100%);
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+    }
+
+    .price-marker {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translateX(-50%);
+    }
+
+    .marker-line {
+      width: 2px;
+      height: 100%;
+      border-radius: 1px;
+    }
+
+    .marker-label {
+      position: absolute;
+      top: -14px;
+      font-size: 0.55rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .price-marker.entry .marker-line { background: var(--blue); }
+    .price-marker.entry .marker-label { color: var(--blue); }
+
+    .price-marker.mark .marker-line { background: var(--text-primary); }
+    .price-marker.mark .marker-label { color: var(--text-primary); }
+
+    .price-marker.liq .marker-line { background: var(--red); }
+    .price-marker.liq .marker-label { color: var(--red); }
+
+    .price-zone {
+      position: absolute;
+      top: 4px;
+      height: 16px;
+      border-radius: 2px;
+      opacity: 0.3;
+    }
+
+    .price-zone.long-zone { background: var(--red); }
+    .price-zone.short-zone { background: var(--red); }
+
+    .price-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.6rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .price-label {
+      padding: 0.15rem 0.3rem;
+      border-radius: 2px;
+      background: var(--bg-card);
+    }
+
+    .price-label.entry { color: var(--blue); }
+    .price-label.mark { color: var(--text-primary); }
+    .price-label.liq { color: var(--red); }
+
     .other-pos-btn {
       background: none;
       border: none;
@@ -637,6 +735,148 @@
     ::-webkit-scrollbar-track { background: var(--bg-secondary); }
     ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* Liquidatable Section */
+    .liquidatable-section {
+      margin-top: 2rem;
+      padding: 0 1.5rem 2rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .section-header h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .section-subtitle {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    .btn-small {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.7rem;
+    }
+
+    .liquidatable-filters {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .liq-update-time {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    .liquidatable-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 900px) {
+      .liquidatable-grid { grid-template-columns: 1fr; }
+    }
+
+    .liquidatable-column {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .liquidatable-list {
+      max-height: 500px;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+
+    .liq-pos-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .liq-pos-card.critical {
+      border-left: 3px solid var(--red);
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    .liq-pos-card.warning {
+      border-left: 3px solid var(--yellow);
+    }
+
+    .liq-pos-row1 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .liq-pos-coin {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .liq-pos-distance {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .liq-pos-distance.critical { color: var(--red); }
+    .liq-pos-distance.warning { color: var(--yellow); }
+    .liq-pos-distance.watch { color: var(--blue); }
+
+    .liq-pos-row2 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      font-size: 0.7rem;
+    }
+
+    .liq-pos-field {
+      text-align: center;
+    }
+
+    .liq-pos-field-label {
+      color: var(--text-muted);
+      font-size: 0.6rem;
+      text-transform: uppercase;
+    }
+
+    .liq-pos-field-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .liq-pos-address {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    .liq-pos-address a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    .liq-pos-address a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -747,6 +987,58 @@
         <div class="whale-section">
           <div class="whale-header">🐋 Whale Liquidations ($500K+)</div>
           <div class="whale-list" id="whaleLiqList"><div class="empty-state">No whale liquidations yet</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Liquidatable Positions Section -->
+    <div class="liquidatable-section">
+      <div class="section-header">
+        <h2>⚠️ All Liquidatable Positions</h2>
+        <span class="section-subtitle">$50K+ positions within 15% of liquidation price</span>
+        <button class="btn btn-small" onclick="refreshLiquidatable()">🔄 Refresh</button>
+      </div>
+      
+      <div class="liquidatable-filters">
+        <div class="filter-group">
+          <label>Min Size</label>
+          <select class="filter-select" id="liqMinSize" onchange="fetchLiquidatable()">
+            <option value="50000">$50K+</option>
+            <option value="100000">$100K+</option>
+            <option value="250000">$250K+</option>
+            <option value="500000">$500K+</option>
+            <option value="1000000">$1M+</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Max Distance</label>
+          <select class="filter-select" id="liqMaxDistance" onchange="fetchLiquidatable()">
+            <option value="15">15%</option>
+            <option value="10">10%</option>
+            <option value="5" selected>5%</option>
+            <option value="3">3%</option>
+          </select>
+        </div>
+        <div class="liq-update-time">
+          Last update: <span id="liqUpdateTime">-</span>
+        </div>
+      </div>
+
+      <div class="liquidatable-grid">
+        <div class="liquidatable-column">
+          <div class="column-header long">
+            <div class="column-title long">🟢 Longs Near Liquidation</div>
+            <div class="column-meta"><strong id="liqLongsTotal">$0</strong> · <span id="liqLongsCount">0</span> positions</div>
+          </div>
+          <div class="liquidatable-list" id="liqLongsList"><div class="empty-state">No longs near liquidation</div></div>
+        </div>
+
+        <div class="liquidatable-column">
+          <div class="column-header short">
+            <div class="column-title short">🔴 Shorts Near Liquidation</div>
+            <div class="column-meta"><strong id="liqShortsTotal">$0</strong> · <span id="liqShortsCount">0</span> positions</div>
+          </div>
+          <div class="liquidatable-list" id="liqShortsList"><div class="empty-state">No shorts near liquidation</div></div>
         </div>
       </div>
     </div>
@@ -871,13 +1163,54 @@
         pnlClass = allTimePnl >= 0 ? 'positive' : 'negative';
       }
 
+      // Wallet age display
+      const ageDays = pos.walletAgeDays;
+      let walletAgeText = 'Unknown';
+      let walletAgeClass = '';
+      if (ageDays !== null && ageDays !== undefined) {
+        if (ageDays === 0) {
+          walletAgeText = '🆕 Brand New';
+          walletAgeClass = 'brand-new';
+        } else if (ageDays < 7) {
+          walletAgeText = ageDays + ' days';
+          walletAgeClass = 'new-wallet';
+        } else if (ageDays < 30) {
+          walletAgeText = Math.floor(ageDays / 7) + ' weeks';
+        } else if (ageDays < 365) {
+          walletAgeText = Math.floor(ageDays / 30) + ' months';
+        } else {
+          walletAgeText = (ageDays / 365).toFixed(1) + ' years';
+        }
+      }
+
+      // Price chart calculation
+      const isLong = pos.direction === 'LONG';
+      const entry = pos.entryPrice;
+      const mark = pos.markPrice;
+      const liq = pos.liqPrice;
+      
+      // For visualization, normalize to 0-100 range
+      let minPrice, maxPrice;
+      if (isLong) {
+        minPrice = liq * 0.95;
+        maxPrice = Math.max(entry, mark) * 1.05;
+      } else {
+        minPrice = Math.min(entry, mark) * 0.95;
+        maxPrice = liq * 1.05;
+      }
+      const range = maxPrice - minPrice;
+      
+      const entryPos = ((entry - minPrice) / range) * 100;
+      const markPos = ((mark - minPrice) / range) * 100;
+      const liqPos = ((liq - minPrice) / range) * 100;
+
       return `
         <div class="pos-card ${pos.dangerLevel === 'CRITICAL' ? 'critical' : ''}">
           <div class="pos-row-1">
             <div class="pos-address">
-              <a href="${pos.hyperliquidUrl}" target="_blank">${pos.userShort}</a>
-              ${pos.isNewAddress ? '<span class="badge badge-new">NEW</span>' : ''}
-              <span class="badge ${isProfitable ? 'badge-profitable' : 'badge-losing'}">${isProfitable ? '💰 Profitable' : '🎰 Losing'}</span>
+              <a href="${pos.hypurrscanUrl}" target="_blank">${pos.userShort}</a>
+              <span class="badge ${isProfitable ? 'badge-profitable' : 'badge-losing'}">${isProfitable ? '💰' : '🎰'}</span>
+              <span class="wallet-age ${walletAgeClass}">${walletAgeText}</span>
             </div>
             <span class="badge badge-${pos.dangerLevel.toLowerCase()}">${pos.dangerLevel}</span>
           </div>
@@ -885,6 +1218,31 @@
             <span class="pos-alltime-label">All-Time PnL</span>
             <span class="pos-alltime-value ${pnlClass}">${pnlDisplay}</span>
           </div>
+
+          <!-- Price Chart -->
+          <div class="price-chart">
+            <div class="price-bar">
+              <div class="price-marker entry" style="left: ${entryPos}%">
+                <div class="marker-line"></div>
+                <div class="marker-label">E</div>
+              </div>
+              <div class="price-marker mark" style="left: ${markPos}%">
+                <div class="marker-line"></div>
+                <div class="marker-label">M</div>
+              </div>
+              <div class="price-marker liq" style="left: ${liqPos}%">
+                <div class="marker-line"></div>
+                <div class="marker-label">L</div>
+              </div>
+              <div class="price-zone ${isLong ? 'long-zone' : 'short-zone'}" style="left: ${Math.min(markPos, liqPos)}%; width: ${Math.abs(markPos - liqPos)}%"></div>
+            </div>
+            <div class="price-labels">
+              <span class="price-label entry">$${formatPrice(entry)}</span>
+              <span class="price-label mark">$${formatPrice(mark)}</span>
+              <span class="price-label liq">$${formatPrice(liq)}</span>
+            </div>
+          </div>
+
           <div class="pos-grid">
             <div class="pos-field">
               <div class="pos-field-label">Coin</div>
@@ -910,11 +1268,6 @@
               <div class="pos-field-label">Wallet</div>
               <div class="pos-field-value">${pos.walletBalance ? formatUSD(pos.walletBalance) : '-'}</div>
             </div>
-          </div>
-          <div class="pos-prices">
-            <span>Entry: <b>${formatPrice(pos.entryPrice)}</b></span>
-            <span>Mark: <b>${formatPrice(pos.markPrice)}</b></span>
-            <span class="liq">Liq: <b>${formatPrice(pos.liqPrice)}</b></span>
           </div>
           ${pos.otherPositions && pos.otherPositions.length > 0 ? `
             <button class="other-pos-btn" onclick="toggleOther(${idx})">
@@ -1063,10 +1416,96 @@
       });
     });
 
+    // ============================================
+    // LIQUIDATABLE POSITIONS SECTION
+    // ============================================
+    async function fetchLiquidatable() {
+      const minSize = document.getElementById('liqMinSize')?.value || '50000';
+      const maxDistance = document.getElementById('liqMaxDistance')?.value || '5';
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/liquidatable?minSize=${minSize}&maxDistance=${maxDistance}`);
+        const data = await response.json();
+        
+        // Update stats
+        document.getElementById('liqLongsTotal').textContent = formatUSD(data.longsValue || 0);
+        document.getElementById('liqLongsCount').textContent = data.longsCount || 0;
+        document.getElementById('liqShortsTotal').textContent = formatUSD(data.shortsValue || 0);
+        document.getElementById('liqShortsCount').textContent = data.shortsCount || 0;
+        
+        // Update time
+        if (data.lastUpdate) {
+          document.getElementById('liqUpdateTime').textContent = new Date(data.lastUpdate).toLocaleTimeString();
+        }
+        
+        // Render longs
+        const longsContainer = document.getElementById('liqLongsList');
+        if (data.longs && data.longs.length > 0) {
+          longsContainer.innerHTML = data.longs.map(pos => renderLiqPosCard(pos)).join('');
+        } else {
+          longsContainer.innerHTML = '<div class="empty-state">No longs near liquidation</div>';
+        }
+        
+        // Render shorts
+        const shortsContainer = document.getElementById('liqShortsList');
+        if (data.shorts && data.shorts.length > 0) {
+          shortsContainer.innerHTML = data.shorts.map(pos => renderLiqPosCard(pos)).join('');
+        } else {
+          shortsContainer.innerHTML = '<div class="empty-state">No shorts near liquidation</div>';
+        }
+        
+      } catch (err) {
+        console.error('Liquidatable fetch error:', err);
+      }
+    }
+    
+    function renderLiqPosCard(pos) {
+      const distanceClass = pos.dangerLevel === 'CRITICAL' ? 'critical' : pos.dangerLevel === 'WARNING' ? 'warning' : 'watch';
+      
+      return `
+        <div class="liq-pos-card ${distanceClass}">
+          <div class="liq-pos-row1">
+            <span class="liq-pos-coin">${pos.coin}</span>
+            <span class="liq-pos-distance ${distanceClass}">${pos.distancePercent}%</span>
+          </div>
+          <div class="liq-pos-row2">
+            <div class="liq-pos-field">
+              <div class="liq-pos-field-label">Size</div>
+              <div class="liq-pos-field-value">${formatUSD(pos.positionUSD)}</div>
+            </div>
+            <div class="liq-pos-field">
+              <div class="liq-pos-field-label">Leverage</div>
+              <div class="liq-pos-field-value">${pos.leverage}x</div>
+            </div>
+            <div class="liq-pos-field">
+              <div class="liq-pos-field-label">Liq Price</div>
+              <div class="liq-pos-field-value" style="color: var(--red);">$${formatPrice(pos.liqPrice)}</div>
+            </div>
+          </div>
+          <div class="liq-pos-address">
+            <a href="${pos.hypurrscanUrl}" target="_blank">${pos.userShort}</a>
+            · Entry: $${formatPrice(pos.entryPrice)} · Mark: $${formatPrice(pos.markPrice)}
+          </div>
+        </div>
+      `;
+    }
+    
+    async function refreshLiquidatable() {
+      try {
+        await fetch(`${API_BASE}/api/liquidatable/refresh`, { method: 'POST' });
+        await fetchLiquidatable();
+        showToast('Liquidatable positions refreshed');
+      } catch (err) {
+        console.error('Refresh error:', err);
+      }
+    }
+
     refreshData();
     refreshLiquidations();
+    fetchLiquidatable();
     setInterval(refreshData, 30000);
     setInterval(refreshLiquidations, 5000);
+    setInterval(fetchLiquidatable, 60000);
   </script>
 </body>
 </html>
