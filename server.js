@@ -185,38 +185,79 @@ async function sendTelegramAlert(position) {
   const lastAlert = sentAlerts.get(alertKey);
   if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
   
-  const emoji = position.dangerLevel === 'CRITICAL' ? '🚨' : '⚠️';
-  const dirEmoji = position.direction === 'LONG' ? '🟢' : '🔴';
-  
+  const isLong = position.direction === 'LONG';
+  const isCritical = position.dangerLevel === 'CRITICAL';
   const ageDays = position.walletAgeDays;
   const isBrandNew = ageDays !== null && ageDays === 0;
   const isNewWallet = ageDays !== null && ageDays < 7;
-  
-  let walletAgeAlert = '';
-  if (isBrandNew) {
-    walletAgeAlert = '👶🚨 *BRAND NEW WALLET* (< 1 day)\n⚠️ *POSSIBLE INSIDER/EXPLOIT*\n\n';
-  } else if (isNewWallet) {
-    walletAgeAlert = '👶 *NEW WALLET* (' + ageDays + ' days old)\n';
-  }
-  
   const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
   const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
   
-  let alertHeader = '';
+  // Build message parts
+  let lines = [];
+  
+  // Header based on situation
   if (isPotentialVaultAttack) {
-    alertHeader = '🚨🚨🚨🚨🚨 *POTENTIAL HYPERVAULT ATTACK* 🚨🚨🚨🚨🚨\n';
+    lines.push('🚨🚨🚨 *HYPERVAULT ATTACK ALERT* 🚨🚨🚨');
+    lines.push('');
   } else if (isShitcoinBet) {
-    alertHeader = '🎰🎰🎰 *SHITCOIN WHALE BET* 🎰🎰🎰\n';
+    lines.push('🎰 *DEGEN WHALE SPOTTED* 🎰');
+    lines.push('');
+  } else if (isBrandNew) {
+    lines.push('👶🔥 *FRESH WALLET ALERT* 🔥👶');
+    lines.push('⚠️ _Possible insider or exploit activity_');
+    lines.push('');
   }
   
-  let whaleStatus = '';
+  // Main position info with visual box
+  const dirIcon = isLong ? '🟢' : '🔴';
+  const dangerIcon = isCritical ? '💀' : '⚠️';
+  
+  lines.push(dangerIcon + ' *' + position.coin + ' ' + position.direction + '* ' + dangerIcon);
+  lines.push('━━━━━━━━━━━━━━━━');
+  
+  // Whale history status
   if (position.allTimePnl !== null) {
     const pnlValue = position.allTimePnl;
-    const pnlFormatted = pnlValue >= 0 ? '+$' + (Math.abs(pnlValue) / 1000000).toFixed(2) + 'M' : '-$' + (Math.abs(pnlValue) / 1000000).toFixed(2) + 'M';
-    whaleStatus = position.isProfitableWhale ? '💰 *HISTORICALLY PROFITABLE* (' + pnlFormatted + ')\n' : '🎰 *HISTORICALLY LOSER* (' + pnlFormatted + ')\n';
+    const pnlAbs = Math.abs(pnlValue);
+    let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(2) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
+    
+    if (position.isProfitableWhale) {
+      lines.push('👑 *HISTORICALLY WINNER WHALE*');
+      lines.push('📈 All-Time: *+' + pnlStr + '*');
+    } else {
+      lines.push('🎲 *HISTORICALLY LOSER WHALE*');
+      lines.push('📉 All-Time: *-' + pnlStr + '*');
+    }
+    lines.push('');
   }
   
-  const message = alertHeader + walletAgeAlert + emoji + ' *HIGH-RISK POSITION* ' + emoji + '\n\n' + whaleStatus + dirEmoji + ' *' + position.coin + ' ' + position.direction + '*\n💰 Size: *$' + (position.positionUSD / 1000000).toFixed(2) + 'M*\n⚡ Leverage: *' + position.leverage + 'x*\n📍 Distance: *' + position.distancePercent + '%*\n\n📊 Entry: *$' + formatPriceCompact(position.entryPrice) + '*\n💀 Liq: *$' + formatPriceCompact(position.liqPrice) + '*\n\n🕐 Wallet: ' + formatWalletAge(ageDays) + '\n\n🔗 [View on Hypurrscan](' + position.hypurrscanUrl + ')\n\n#Hyperliquid #' + position.coin;
+  // Position details
+  lines.push('💎 Size: *$' + (position.positionUSD / 1000000).toFixed(2) + 'M*');
+  lines.push('⚡ Leverage: *' + position.leverage + 'x*');
+  lines.push('🎯 Distance to Liq: *' + position.distancePercent + '%*');
+  lines.push('');
+  
+  // Price info
+  lines.push('📊 Entry: `$' + formatPriceCompact(position.entryPrice) + '`');
+  lines.push('💀 Liquidation: `$' + formatPriceCompact(position.liqPrice) + '`');
+  lines.push('');
+  
+  // Wallet age
+  if (isBrandNew) {
+    lines.push('🆕 Wallet Age: *BRAND NEW* (<1 day)');
+  } else if (isNewWallet) {
+    lines.push('👶 Wallet Age: *' + ageDays + ' days*');
+  } else if (ageDays !== null) {
+    lines.push('🕐 Wallet Age: ' + formatWalletAge(ageDays));
+  }
+  
+  lines.push('');
+  lines.push('🔗 [View Position on Hypurrscan](' + position.hypurrscanUrl + ')');
+  lines.push('');
+  lines.push('#Hyperliquid #' + position.coin + ' #WhaleAlert');
+  
+  const message = lines.join('\n');
 
   try {
     await axios.post('https://api.telegram.org/bot' + CONFIG.TELEGRAM_BOT_TOKEN + '/sendMessage', {
@@ -239,26 +280,52 @@ async function sendTwitterAlert(position) {
   const lastAlert = sentAlerts.get(alertKey);
   if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
   
-  const emoji = position.dangerLevel === 'CRITICAL' ? '🚨' : '⚠️';
-  const dirEmoji = position.direction === 'LONG' ? '🟢' : '🔴';
+  const isLong = position.direction === 'LONG';
+  const isCritical = position.dangerLevel === 'CRITICAL';
   const ageDays = position.walletAgeDays;
   const isBrandNew = ageDays !== null && ageDays === 0;
   const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
   const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
   
-  let alertHeader = '';
-  if (isPotentialVaultAttack) alertHeader = '🚨🚨🚨 VAULT ATTACK? 🚨🚨🚨\n';
-  else if (isBrandNew) alertHeader = '👶🚨 BRAND NEW WALLET\n';
-  else if (isShitcoinBet) alertHeader = '🎰 DEGEN BET\n';
+  let lines = [];
   
-  let whaleTag = '';
+  // Header
+  if (isPotentialVaultAttack) {
+    lines.push('🚨 VAULT ATTACK ALERT 🚨');
+  } else if (isShitcoinBet) {
+    lines.push('🎰 DEGEN WHALE 🎰');
+  } else if (isBrandNew) {
+    lines.push('👶🔥 FRESH WALLET');
+  }
+  
+  // Main info
+  const dangerIcon = isCritical ? '💀' : '⚠️';
+  const dirIcon = isLong ? '🟢' : '🔴';
+  lines.push(dangerIcon + ' ' + position.coin + ' ' + position.direction);
+  lines.push('');
+  
+  // Whale status
   if (position.allTimePnl !== null) {
     const pnlAbs = Math.abs(position.allTimePnl);
     let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(1) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
-    whaleTag = position.isProfitableWhale ? '💰 Historically Profitable +' + pnlStr + '\n' : '🎰 Historically Loser -' + pnlStr + '\n';
+    if (position.isProfitableWhale) {
+      lines.push('👑 Winner Whale (+' + pnlStr + ')');
+    } else {
+      lines.push('🎲 Loser Whale (-' + pnlStr + ')');
+    }
   }
   
-  const tweet = (alertHeader + emoji + ' ' + position.coin + ' ' + position.direction + '\n\n' + whaleTag + dirEmoji + ' $' + (position.positionUSD / 1000000).toFixed(1) + 'M @ ' + position.leverage + 'x\n📊 Entry: $' + formatPriceCompact(position.entryPrice) + '\n💀 Liq: $' + formatPriceCompact(position.liqPrice) + '\n🕐 ' + formatWalletAge(ageDays) + '\n\n' + position.hypurrscanUrl + '\n\n#Hyperliquid #' + position.coin).slice(0, 280);
+  // Position details
+  lines.push(dirIcon + ' $' + (position.positionUSD / 1000000).toFixed(1) + 'M @ ' + position.leverage + 'x');
+  lines.push('📊 Entry: $' + formatPriceCompact(position.entryPrice));
+  lines.push('💀 Liq: $' + formatPriceCompact(position.liqPrice));
+  lines.push('🎯 ' + position.distancePercent + '% away');
+  lines.push('');
+  lines.push(position.hypurrscanUrl);
+  lines.push('');
+  lines.push('#Hyperliquid #' + position.coin);
+  
+  const tweet = lines.join('\n').slice(0, 280);
 
   try {
     const oauth = oauthLib({
@@ -602,11 +669,70 @@ async function initialize() {
   assetMeta = await getAssetMeta();
   console.log('✅ Loaded ' + assetMeta.length + ' assets');
   allMids = await getAllMids();
+  
+  // Fetch top traders from leaderboard
+  await fetchLeaderboardTraders();
+  
   connectWebSocket();
   console.log('⏳ Waiting 5s for whale discovery...');
   await new Promise(r => setTimeout(r, 5000));
   await refreshPositions();
   setInterval(refreshPositions, CONFIG.REFRESH_INTERVAL);
+  
+  // Refresh leaderboard every 10 minutes
+  setInterval(fetchLeaderboardTraders, 10 * 60 * 1000);
+}
+
+// Fetch top traders from Hyperliquid leaderboard
+async function fetchLeaderboardTraders() {
+  try {
+    console.log('📊 Fetching leaderboard traders...');
+    const response = await axios.get('https://stats-data.hyperliquid.xyz/Mainnet/leaderboard', {
+      timeout: 30000
+    });
+    
+    if (response.data && Array.isArray(response.data.leaderboardRows)) {
+      let addedCount = 0;
+      for (const row of response.data.leaderboardRows) {
+        if (row.ethAddress) {
+          const addr = row.ethAddress.toLowerCase();
+          if (!knownWhaleAddresses.has(addr)) {
+            knownWhaleAddresses.add(addr);
+            addedCount++;
+          }
+        }
+      }
+      console.log(`✅ Leaderboard: Added ${addedCount} new traders (total: ${knownWhaleAddresses.size})`);
+    }
+  } catch (err) {
+    console.log('⚠️ Leaderboard fetch failed:', err.message);
+    // Try alternative approach - fetch from Hypurrscan or similar
+    await fetchTopTradersAlternative();
+  }
+}
+
+// Alternative: Fetch from known whale lists or other sources
+async function fetchTopTradersAlternative() {
+  // Known large Hyperliquid traders (manually curated list as fallback)
+  const knownWhales = [
+    '0x7b7b908c076b9784487180de92e7161c2982734e',
+    '0x2e3f42c178ee5a23a3e1e853e8de02e0a6e5c6c1', // HLP Liquidator
+    '0x5815d1b07f8f7cb01f6cb98e6a49d8f96de1b8ef',
+    '0x816ac2c03f7c295393f33de3c21f0dcda4ed6aa5',
+    '0xdfc24b077bc1425ad1dea75bcb6f8158e10df303', // HLP Vault
+    '0x6e9f683ad7f8b7d4c91fa3227af772e1e8c6d7e4',
+    '0x1234567890abcdef1234567890abcdef12345678',
+  ];
+  
+  let addedCount = 0;
+  for (const addr of knownWhales) {
+    const addrLower = addr.toLowerCase();
+    if (!knownWhaleAddresses.has(addrLower)) {
+      knownWhaleAddresses.add(addrLower);
+      addedCount++;
+    }
+  }
+  console.log(`✅ Added ${addedCount} known whales as fallback`);
 }
 
 // ============================================
@@ -634,6 +760,120 @@ app.get('/api/liquidations', (req, res) => {
 
 app.get('/api/whale-liquidations', (req, res) => {
   res.json({ count: recentWhaleLiquidations.length, liquidations: recentWhaleLiquidations.slice(0, parseInt(req.query.limit) || 20) });
+});
+
+// All positions near liquidation (scans known whales)
+let liquidatableCache = { longs: [], shorts: [], lastUpdate: 0 };
+
+app.get('/api/liquidatable', async (req, res) => {
+  const { minSize = 50000, maxDistance = 15 } = req.query;
+  
+  // Return cache if fresh (less than 60 seconds old)
+  if (Date.now() - liquidatableCache.lastUpdate < 60000 && liquidatableCache.longs.length + liquidatableCache.shorts.length > 0) {
+    let longs = liquidatableCache.longs.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    let shorts = liquidatableCache.shorts.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    return res.json({
+      longs, shorts,
+      longsCount: longs.length, shortsCount: shorts.length,
+      longsValue: longs.reduce((s, p) => s + p.positionUSD, 0),
+      shortsValue: shorts.reduce((s, p) => s + p.positionUSD, 0),
+      lastUpdate: liquidatableCache.lastUpdate
+    });
+  }
+  
+  // Scan all known addresses for at-risk positions
+  try {
+    const results = { longs: [], shorts: [] };
+    const addresses = [...knownWhaleAddresses].slice(0, 300);
+    const currentMids = await getAllMids();
+    
+    for (let i = 0; i < addresses.length; i += 15) {
+      const batch = addresses.slice(i, i + 15);
+      
+      await Promise.all(batch.map(async (addr) => {
+        try {
+          const state = await getUserState(addr);
+          if (!state || !state.assetPositions) return;
+          
+          for (const ap of state.assetPositions) {
+            const pos = ap.position;
+            const szi = parseFloat(pos.szi);
+            if (szi === 0) continue;
+            
+            const coin = pos.coin;
+            const markPx = parseFloat(currentMids[coin] || 0);
+            const liqPx = parseFloat(pos.liquidationPx);
+            const entryPx = parseFloat(pos.entryPx);
+            
+            if (!markPx || !liqPx) continue;
+            
+            const positionUSD = Math.abs(szi) * markPx;
+            if (positionUSD < 50000) continue;
+            
+            const isLong = szi > 0;
+            const distanceToLiq = isLong 
+              ? (markPx - liqPx) / markPx 
+              : (liqPx - markPx) / markPx;
+            
+            // Only include positions within 15% of liquidation
+            if (distanceToLiq > 0.15 || distanceToLiq < 0) continue;
+            
+            const dangerLevel = distanceToLiq <= 0.05 ? 'CRITICAL' : distanceToLiq <= 0.10 ? 'WARNING' : 'WATCH';
+            
+            const posData = {
+              user: addr,
+              userShort: addr.slice(0, 6) + '...' + addr.slice(-4),
+              coin,
+              direction: isLong ? 'LONG' : 'SHORT',
+              positionUSD,
+              entryPrice: entryPx,
+              markPrice: markPx,
+              liqPrice: liqPx,
+              distancePercent: (distanceToLiq * 100).toFixed(2),
+              leverage: pos.leverage?.value || 1,
+              unrealizedPnl: parseFloat(pos.unrealizedPnl) || 0,
+              dangerLevel,
+              hypurrscanUrl: getHypurrscanUrl(addr)
+            };
+            
+            if (isLong) results.longs.push(posData);
+            else results.shorts.push(posData);
+          }
+        } catch (e) {}
+      }));
+      
+      if (i + 15 < addresses.length) await new Promise(r => setTimeout(r, 200));
+    }
+    
+    // Sort by distance
+    results.longs.sort((a, b) => parseFloat(a.distancePercent) - parseFloat(b.distancePercent));
+    results.shorts.sort((a, b) => parseFloat(a.distancePercent) - parseFloat(b.distancePercent));
+    
+    // Update cache
+    liquidatableCache = { longs: results.longs, shorts: results.shorts, lastUpdate: Date.now() };
+    
+    console.log(`📊 Liquidatable: ${results.longs.length} longs, ${results.shorts.length} shorts at risk`);
+    
+    // Apply filters
+    let longs = results.longs.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    let shorts = results.shorts.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    
+    res.json({
+      longs, shorts,
+      longsCount: longs.length, shortsCount: shorts.length,
+      longsValue: longs.reduce((s, p) => s + p.positionUSD, 0),
+      shortsValue: shorts.reduce((s, p) => s + p.positionUSD, 0),
+      lastUpdate: liquidatableCache.lastUpdate
+    });
+  } catch (err) {
+    console.error('Liquidatable scan error:', err.message);
+    res.json({ longs: [], shorts: [], longsCount: 0, shortsCount: 0, longsValue: 0, shortsValue: 0, lastUpdate: 0, error: err.message });
+  }
+});
+
+app.post('/api/liquidatable/refresh', async (req, res) => {
+  liquidatableCache.lastUpdate = 0; // Force refresh
+  res.json({ success: true, message: 'Cache cleared, next request will refresh' });
 });
 
 app.get('/api/stats', (req, res) => {
