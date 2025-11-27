@@ -681,98 +681,6 @@ async function initialize() {
   
   // Refresh leaderboard every 10 minutes
   setInterval(fetchLeaderboardTraders, 10 * 60 * 1000);
-  
-  // Background liquidatable scan every 3 minutes
-  backgroundLiquidatableScan();
-  setInterval(backgroundLiquidatableScan, 3 * 60 * 1000);
-}
-
-// Background scan for liquidatable positions
-async function backgroundLiquidatableScan() {
-  if (isScanning) {
-    console.log('⏳ Scan already in progress, skipping...');
-    return;
-  }
-  
-  isScanning = true;
-  try {
-    console.log(`🔍 Background scan: ${knownWhaleAddresses.size} addresses...`);
-    const results = { longs: [], shorts: [] };
-    const addresses = [...knownWhaleAddresses].slice(0, 1000); // Scan up to 1000
-    const currentMids = await getAllMids();
-    
-    for (let i = 0; i < addresses.length; i += 20) {
-      const batch = addresses.slice(i, i + 20);
-      
-      await Promise.all(batch.map(async (addr) => {
-        try {
-          const state = await getUserState(addr);
-          if (!state || !state.assetPositions) return;
-          
-          for (const ap of state.assetPositions) {
-            const pos = ap.position;
-            const szi = parseFloat(pos.szi);
-            if (szi === 0) continue;
-            
-            const coin = pos.coin;
-            const markPx = parseFloat(currentMids[coin] || 0);
-            const liqPx = parseFloat(pos.liquidationPx);
-            const entryPx = parseFloat(pos.entryPx);
-            
-            if (!markPx || !liqPx) continue;
-            
-            const positionUSD = Math.abs(szi) * markPx;
-            if (positionUSD < 50000) continue;
-            
-            const isLong = szi > 0;
-            const distanceToLiq = isLong 
-              ? (markPx - liqPx) / markPx 
-              : (liqPx - markPx) / markPx;
-            
-            if (distanceToLiq > 0.15 || distanceToLiq < 0) continue;
-            
-            const dangerLevel = distanceToLiq <= 0.05 ? 'CRITICAL' : distanceToLiq <= 0.10 ? 'WARNING' : 'WATCH';
-            
-            const posData = {
-              user: addr,
-              userShort: addr.slice(0, 6) + '...' + addr.slice(-4),
-              coin,
-              direction: isLong ? 'LONG' : 'SHORT',
-              positionUSD,
-              entryPrice: entryPx,
-              markPrice: markPx,
-              liqPrice: liqPx,
-              distancePercent: (distanceToLiq * 100).toFixed(2),
-              leverage: pos.leverage?.value || 1,
-              unrealizedPnl: parseFloat(pos.unrealizedPnl) || 0,
-              dangerLevel,
-              hypurrscanUrl: getHypurrscanUrl(addr)
-            };
-            
-            if (isLong) results.longs.push(posData);
-            else results.shorts.push(posData);
-          }
-        } catch (e) {}
-      }));
-      
-      if (i + 20 < addresses.length) await new Promise(r => setTimeout(r, 100));
-    }
-    
-    results.longs.sort((a, b) => parseFloat(a.distancePercent) - parseFloat(b.distancePercent));
-    results.shorts.sort((a, b) => parseFloat(a.distancePercent) - parseFloat(b.distancePercent));
-    
-    // Only update cache if we got results
-    if (results.longs.length > 0 || results.shorts.length > 0) {
-      liquidatableCache = { longs: results.longs, shorts: results.shorts, lastUpdate: Date.now() };
-      console.log(`📊 Background scan: ${results.longs.length} longs, ${results.shorts.length} shorts at risk`);
-    } else {
-      console.log(`⚠️ Background scan: No positions found (keeping old cache)`);
-    }
-  } catch (err) {
-    console.error('Background scan error:', err.message);
-  } finally {
-    isScanning = false;
-  }
 }
 
 // Fetch top traders from Hyperliquid leaderboard
@@ -913,68 +821,163 @@ app.get('/api/whale-liquidations', (req, res) => {
   res.json({ count: recentWhaleLiquidations.length, liquidations: recentWhaleLiquidations.slice(0, parseInt(req.query.limit) || 20) });
 });
 
-// All positions near liquidation (uses background scan cache)
+// All positions near liquidation (scans known whales)
 let liquidatableCache = { longs: [], shorts: [], lastUpdate: 0 };
-let isScanning = false;
 
 app.get('/api/liquidatable', async (req, res) => {
   const { minSize = 50000, maxDistance = 15 } = req.query;
   
-  // Always return from cache - background scan keeps it fresh
-  let longs = (liquidatableCache.longs || []).filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
-  let shorts = (liquidatableCache.shorts || []).filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
-  
-  // Calculate coin stats for filtered results
-  const longCoinStats = {};
-  const shortCoinStats = {};
-  
-  for (const p of longs) {
-    if (!longCoinStats[p.coin]) longCoinStats[p.coin] = { count: 0, totalSize: 0, weightedLiqSum: 0, distanceSum: 0, markPrice: p.markPrice };
-    longCoinStats[p.coin].count++;
-    longCoinStats[p.coin].totalSize += p.positionUSD;
-    longCoinStats[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
-    longCoinStats[p.coin].distanceSum += parseFloat(p.distancePercent);
+  // Return cache if fresh (less than 60 seconds old)
+  if (Date.now() - liquidatableCache.lastUpdate < 60000 && liquidatableCache.longs.length + liquidatableCache.shorts.length > 0) {
+    let longs = liquidatableCache.longs.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    let shorts = liquidatableCache.shorts.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    return res.json({
+      longs, shorts,
+      longsCount: longs.length, shortsCount: shorts.length,
+      longsValue: longs.reduce((s, p) => s + p.positionUSD, 0),
+      shortsValue: shorts.reduce((s, p) => s + p.positionUSD, 0),
+      lastUpdate: liquidatableCache.lastUpdate
+    });
   }
   
-  for (const p of shorts) {
-    if (!shortCoinStats[p.coin]) shortCoinStats[p.coin] = { count: 0, totalSize: 0, weightedLiqSum: 0, distanceSum: 0, markPrice: p.markPrice };
-    shortCoinStats[p.coin].count++;
-    shortCoinStats[p.coin].totalSize += p.positionUSD;
-    shortCoinStats[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
-    shortCoinStats[p.coin].distanceSum += parseFloat(p.distancePercent);
+  // Scan all known addresses for at-risk positions
+  try {
+    const results = { longs: [], shorts: [] };
+    const addresses = [...knownWhaleAddresses].slice(0, 300);
+    const currentMids = await getAllMids();
+    
+    for (let i = 0; i < addresses.length; i += 15) {
+      const batch = addresses.slice(i, i + 15);
+      
+      await Promise.all(batch.map(async (addr) => {
+        try {
+          const state = await getUserState(addr);
+          if (!state || !state.assetPositions) return;
+          
+          for (const ap of state.assetPositions) {
+            const pos = ap.position;
+            const szi = parseFloat(pos.szi);
+            if (szi === 0) continue;
+            
+            const coin = pos.coin;
+            const markPx = parseFloat(currentMids[coin] || 0);
+            const liqPx = parseFloat(pos.liquidationPx);
+            const entryPx = parseFloat(pos.entryPx);
+            
+            if (!markPx || !liqPx) continue;
+            
+            const positionUSD = Math.abs(szi) * markPx;
+            if (positionUSD < 50000) continue;
+            
+            const isLong = szi > 0;
+            const distanceToLiq = isLong 
+              ? (markPx - liqPx) / markPx 
+              : (liqPx - markPx) / markPx;
+            
+            // Only include positions within 15% of liquidation
+            if (distanceToLiq > 0.15 || distanceToLiq < 0) continue;
+            
+            const dangerLevel = distanceToLiq <= 0.05 ? 'CRITICAL' : distanceToLiq <= 0.10 ? 'WARNING' : 'WATCH';
+            
+            const posData = {
+              user: addr,
+              userShort: addr.slice(0, 6) + '...' + addr.slice(-4),
+              coin,
+              direction: isLong ? 'LONG' : 'SHORT',
+              positionUSD,
+              entryPrice: entryPx,
+              markPrice: markPx,
+              liqPrice: liqPx,
+              distancePercent: (distanceToLiq * 100).toFixed(2),
+              leverage: pos.leverage?.value || 1,
+              unrealizedPnl: parseFloat(pos.unrealizedPnl) || 0,
+              dangerLevel,
+              hypurrscanUrl: getHypurrscanUrl(addr)
+            };
+            
+            if (isLong) results.longs.push(posData);
+            else results.shorts.push(posData);
+          }
+        } catch (e) {}
+      }));
+      
+      if (i + 15 < addresses.length) await new Promise(r => setTimeout(r, 200));
+    }
+    
+    // Sort by distance
+    results.longs.sort((a, b) => parseFloat(a.distancePercent) - parseFloat(b.distancePercent));
+    results.shorts.sort((a, b) => parseFloat(a.distancePercent) - parseFloat(b.distancePercent));
+    
+    // Update cache
+    liquidatableCache = { longs: results.longs, shorts: results.shorts, lastUpdate: Date.now() };
+    
+    console.log(`📊 Liquidatable: ${results.longs.length} longs, ${results.shorts.length} shorts at risk`);
+    
+    // Apply filters
+    let longs = results.longs.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    let shorts = results.shorts.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
+    
+    // Calculate coin stats for filtered results
+    const longCoinStats = {};
+    const shortCoinStats = {};
+    
+    for (const p of longs) {
+      if (!longCoinStats[p.coin]) {
+        longCoinStats[p.coin] = { count: 0, totalSize: 0, weightedLiqSum: 0, distanceSum: 0 };
+      }
+      longCoinStats[p.coin].count++;
+      longCoinStats[p.coin].totalSize += p.positionUSD;
+      longCoinStats[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
+      longCoinStats[p.coin].distanceSum += parseFloat(p.distancePercent);
+      longCoinStats[p.coin].markPrice = p.markPrice;
+    }
+    
+    for (const p of shorts) {
+      if (!shortCoinStats[p.coin]) {
+        shortCoinStats[p.coin] = { count: 0, totalSize: 0, weightedLiqSum: 0, distanceSum: 0 };
+      }
+      shortCoinStats[p.coin].count++;
+      shortCoinStats[p.coin].totalSize += p.positionUSD;
+      shortCoinStats[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
+      shortCoinStats[p.coin].distanceSum += parseFloat(p.distancePercent);
+      shortCoinStats[p.coin].markPrice = p.markPrice;
+    }
+    
+    // Finalize stats
+    for (const coin of Object.keys(longCoinStats)) {
+      const s = longCoinStats[coin];
+      s.avgLiqPrice = s.weightedLiqSum / s.totalSize;
+      s.avgDistance = (s.distanceSum / s.count).toFixed(2);
+      delete s.weightedLiqSum;
+      delete s.distanceSum;
+    }
+    
+    for (const coin of Object.keys(shortCoinStats)) {
+      const s = shortCoinStats[coin];
+      s.avgLiqPrice = s.weightedLiqSum / s.totalSize;
+      s.avgDistance = (s.distanceSum / s.count).toFixed(2);
+      delete s.weightedLiqSum;
+      delete s.distanceSum;
+    }
+    
+    res.json({
+      longs, shorts,
+      longsCount: longs.length, shortsCount: shorts.length,
+      longsValue: longs.reduce((s, p) => s + p.positionUSD, 0),
+      shortsValue: shorts.reduce((s, p) => s + p.positionUSD, 0),
+      longCoinStats,
+      shortCoinStats,
+      lastUpdate: liquidatableCache.lastUpdate
+    });
+  } catch (err) {
+    console.error('Liquidatable scan error:', err.message);
+    res.json({ longs: [], shorts: [], longsCount: 0, shortsCount: 0, longsValue: 0, shortsValue: 0, lastUpdate: 0, error: err.message });
   }
-  
-  for (const coin of Object.keys(longCoinStats)) {
-    const s = longCoinStats[coin];
-    s.avgLiqPrice = s.weightedLiqSum / s.totalSize;
-    s.avgDistance = (s.distanceSum / s.count).toFixed(2);
-    delete s.weightedLiqSum; delete s.distanceSum;
-  }
-  for (const coin of Object.keys(shortCoinStats)) {
-    const s = shortCoinStats[coin];
-    s.avgLiqPrice = s.weightedLiqSum / s.totalSize;
-    s.avgDistance = (s.distanceSum / s.count).toFixed(2);
-    delete s.weightedLiqSum; delete s.distanceSum;
-  }
-  
-  res.json({
-    longs, shorts,
-    longsCount: longs.length, shortsCount: shorts.length,
-    longsValue: longs.reduce((s, p) => s + p.positionUSD, 0),
-    shortsValue: shorts.reduce((s, p) => s + p.positionUSD, 0),
-    longCoinStats, shortCoinStats,
-    lastUpdate: liquidatableCache.lastUpdate,
-    isScanning,
-    totalAddresses: knownWhaleAddresses.size
-  });
 });
 
 app.post('/api/liquidatable/refresh', async (req, res) => {
-  // Trigger immediate background scan
-  if (!isScanning) {
-    backgroundLiquidatableScan();
-  }
-  res.json({ success: true, message: 'Scan triggered' });
+  liquidatableCache.lastUpdate = 0; // Force refresh
+  res.json({ success: true, message: 'Cache cleared, next request will refresh' });
 });
 
 app.get('/api/stats', (req, res) => {
