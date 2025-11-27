@@ -225,6 +225,50 @@ async function getUserState(address) {
   });
 }
 
+// Get user's historical all-time PnL from portfolio API
+async function getUserAllTimePnl(address) {
+  try {
+    const response = await axios.post(CONFIG.HYPERLIQUID_API, {
+      type: 'portfolio',
+      user: address
+    });
+    
+    if (response.data && Array.isArray(response.data)) {
+      // Find "allTime" or "perpAllTime" entry
+      for (const [period, data] of response.data) {
+        if (period === 'allTime' || period === 'perpAllTime') {
+          if (data.pnlHistory && data.pnlHistory.length > 0) {
+            // Get the last (most recent) PnL value
+            const lastEntry = data.pnlHistory[data.pnlHistory.length - 1];
+            return parseFloat(lastEntry[1] || 0);
+          }
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Cache for all-time PnL (to avoid too many API calls)
+const allTimePnlCache = new Map(); // address -> { pnl, timestamp }
+const PNL_CACHE_TTL = 300000; // 5 minutes cache
+
+async function getCachedAllTimePnl(address) {
+  const addrLower = address.toLowerCase();
+  const cached = allTimePnlCache.get(addrLower);
+  if (cached && (Date.now() - cached.timestamp) < PNL_CACHE_TTL) {
+    return cached.pnl;
+  }
+  
+  const pnl = await getUserAllTimePnl(address);
+  if (pnl !== null) {
+    allTimePnlCache.set(addrLower, { pnl, timestamp: Date.now() });
+  }
+  return pnl;
+}
+
 // Calculate distance to liquidation
 function calculateLiqDistance(position, currentPrice) {
   const liqPrice = parseFloat(position.liquidationPx);
@@ -365,10 +409,13 @@ function processPosition(userAddress, position, currentPrice, accountData = null
     totalPositionValue: totalPositionValue,
     otherPositions: otherPositions,
     totalPositionCount: otherPositions.length + 1,
-    // Total PnL across all positions
+    // Current unrealized PnL (açık pozisyonların şu anki durumu)
     totalUnrealizedPnl: totalUnrealizedPnl,
-    isProfitableWhale: isProfitableWhale,
-    whaleType: isProfitableWhale ? 'PROFITABLE' : 'LOSING',
+    // All-time PnL will be filled async - placeholder
+    allTimePnl: null, // Will be fetched separately
+    // Legacy - kept for compatibility but now based on all-time when available
+    isProfitableWhale: totalUnrealizedPnl > 0, // Will be updated with all-time PnL
+    whaleType: totalUnrealizedPnl > 0 ? 'PROFITABLE' : 'LOSING',
     // Yeni adres mi kontrolü - son 5 dakika içinde eklendiyse "yeni"
     isNewAddress: (Date.now() - (addressLastSeen.get(userAddress.toLowerCase()) || 0)) < 300000,
     firstSeenAgo: addressLastSeen.get(userAddress.toLowerCase()) 
@@ -482,18 +529,6 @@ function connectWebSocket() {
       
       // TRADE MONITORING - Ana özellik!
       if (msg.channel === 'trades' && msg.data) {
-<<<<<<< HEAD
-=======
-        // Debug: İlk birkaç trade'i logla
-        if (msg.data.length > 0) {
-          const firstTrade = msg.data[0];
-          const value = parseFloat(firstTrade.sz || 0) * parseFloat(firstTrade.px || 0);
-          if (value >= 50000) {
-            console.log(`📈 Trade: ${firstTrade.coin} | $${(value/1000).toFixed(0)}k | crossed: ${firstTrade.crossed}`);
-          }
-        }
-        
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
         processTrades(msg.data);
         
         // Check for liquidation trades
@@ -601,7 +636,6 @@ function processLiquidations(trades) {
       
       const tradeValue = Math.abs(sz) * px;
       
-<<<<<<< HEAD
       // SADECE crossed=true olan işlemler likidasyon olabilir
       // crossed = taker order (market order) - likidasyonlar HER ZAMAN market order
       // Normal limit order'lar crossed=false olur
@@ -613,30 +647,12 @@ function processLiquidations(trades) {
         const liq = {
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           coin: trade.coin,
-=======
-      // Hyperliquid'de crossed=true olan işlemler market order (taker)
-      // Likidasyonlar her zaman market order ile yapılır
-      // NOT: Bazen crossed field gelmeyebilir, büyük ani işlemleri de dahil edelim
-      const isCrossed = trade.crossed === true;
-      
-      // $5k+ crossed trade = potansiyel likidasyon (daha düşük threshold)
-      // VEYA $50k+ herhangi bir trade (büyük market order = muhtemel liq)
-      const isLiquidation = (isCrossed && tradeValue >= 5000) || tradeValue >= 50000;
-      
-      if (isLiquidation) {
-        const liq = {
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          coin: trade.coin,
-          // Buyer (B) aldıysa, bir short likidasyona uğradı
-          // Seller (A) sattıysa, bir long likidasyona uğradı
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
           side: trade.side === 'B' ? 'SHORT' : 'LONG',
           price: px,
           size: Math.abs(sz),
           value: tradeValue,
           timestamp: trade.time || Date.now(),
           hash: trade.hash || null,
-<<<<<<< HEAD
         };
         
         // Duplicate kontrolü (son 3 saniye içinde aynı coin + benzer value)
@@ -647,20 +663,6 @@ function processLiquidations(trades) {
         );
         
         if (!isDuplicate) {
-=======
-          crossed: isCrossed
-        };
-        
-        // Duplicate kontrolü (son 2 saniye içinde aynı coin/value)
-        const isDuplicate = recentLiquidations.some(l => 
-          l.coin === liq.coin && 
-          Math.abs(l.value - liq.value) < 100 && 
-          Math.abs(l.timestamp - liq.timestamp) < 2000
-        );
-        
-        if (!isDuplicate) {
-          // Add to all liquidations
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
           recentLiquidations.unshift(liq);
           if (recentLiquidations.length > MAX_LIQUIDATIONS) {
             recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
@@ -673,11 +675,7 @@ function processLiquidations(trades) {
               recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
             }
             console.log(`🐋💀 WHALE LIQ: ${liq.coin} ${liq.side} | $${(tradeValue/1000000).toFixed(2)}M @ $${px.toFixed(2)}`);
-<<<<<<< HEAD
           } else if (tradeValue >= 100000) {
-=======
-          } else if (tradeValue >= 50000) {
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
             console.log(`💀 LIQ: ${liq.coin} ${liq.side} | $${(tradeValue/1000).toFixed(0)}k @ $${px.toFixed(2)}`);
           }
         }
@@ -696,6 +694,9 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue, isNewAddr
     if (state && state.assetPositions && state.assetPositions.length > 0) {
       let foundHighRisk = false;
       
+      // Fetch all-time PnL for this address (async)
+      const allTimePnl = await getCachedAllTimePnl(address);
+      
       for (const assetPos of state.assetPositions) {
         const pos = assetPos.position;
         // Pass full account data
@@ -703,6 +704,13 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue, isNewAddr
         
         if (processed) {
           foundHighRisk = true;
+          
+          // Add all-time PnL and update whale classification
+          processed.allTimePnl = allTimePnl;
+          if (allTimePnl !== null) {
+            processed.isProfitableWhale = allTimePnl > 0;
+            processed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
+          }
           
           // Check if already in tracked positions
           const existingIdx = trackedPositions.findIndex(
@@ -721,9 +729,10 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue, isNewAddr
           
           // 🚨 ALERT for high-risk positions
           const emoji = processed.dangerLevel === 'CRITICAL' ? '🚨🚨🚨' : '⚠️';
+          const whaleEmoji = processed.isProfitableWhale ? '💰' : '🎰';
           console.log(`${emoji} INSTANT DETECT: ${processed.userShort} | ${processed.coin} ${processed.direction}`);
           console.log(`   💰 Size: $${(processed.positionUSD/1000000).toFixed(2)}M | ⚡ Lev: ${processed.leverage}x | 📍 Distance: ${processed.distancePercent}%`);
-          console.log(`   💼 Wallet: $${(processed.walletBalance/1000).toFixed(0)}k | 📊 Total Positions: ${processed.totalPositionCount}`);
+          console.log(`   ${whaleEmoji} All-Time PnL: ${allTimePnl !== null ? (allTimePnl >= 0 ? '+' : '') + '$' + (allTimePnl/1000).toFixed(0) + 'k' : 'N/A'}`);
           
           if (isNewAddress) {
             console.log(`   🆕 YENİ ADRES - Muhtemel insider/kumarbaz!`);
@@ -790,11 +799,21 @@ async function scanPositions(addresses) {
         const state = await getUserState(address);
         if (state && state.assetPositions) {
           const positions = [];
+          
+          // Fetch all-time PnL once per address (uses cache)
+          const allTimePnl = await getCachedAllTimePnl(address);
+          
           for (const assetPos of state.assetPositions) {
             const pos = assetPos.position;
             // Pass full account data for wallet balance and other positions
             const processed = processPosition(address, pos, allMids[pos.coin], state);
             if (processed) {
+              // Add all-time PnL and update whale classification
+              processed.allTimePnl = allTimePnl;
+              if (allTimePnl !== null) {
+                processed.isProfitableWhale = allTimePnl > 0;
+                processed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
+              }
               positions.push(processed);
             }
           }

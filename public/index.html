@@ -3,33 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HL Liquidation Hunter | High-Risk Position Tracker</title>
+  <title>HL Liquidation Hunter</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-primary: #0a0a0f;
-      --bg-secondary: #12121a;
-      --bg-tertiary: #1a1a24;
-      --bg-card: #15151f;
-      --border: #2a2a3a;
-      --text-primary: #e4e4e7;
-      --text-secondary: #a1a1aa;
-      --text-muted: #71717a;
-      --accent-green: #22c55e;
-      --accent-green-dim: #16a34a;
-      --accent-red: #ef4444;
-      --accent-red-dim: #dc2626;
-      --accent-yellow: #eab308;
-      --accent-yellow-dim: #ca8a04;
-      --accent-blue: #3b82f6;
-      --accent-cyan: #06b6d4;
-      --accent-purple: #8b5cf6;
-      --gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-      --gradient-warning: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
-      --glow-red: 0 0 20px rgba(239, 68, 68, 0.3);
-      --glow-yellow: 0 0 20px rgba(234, 179, 8, 0.3);
+      --bg-primary: #0b0b0f;
+      --bg-secondary: #111118;
+      --bg-card: #16161e;
+      --bg-hover: #1c1c26;
+      --border: #252530;
+      --border-light: #32323f;
+      --text-primary: #f0f0f5;
+      --text-secondary: #a0a0b0;
+      --text-muted: #606070;
+      --green: #10b981;
+      --green-dim: #059669;
+      --red: #ef4444;
+      --red-dim: #dc2626;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+      --purple: #8b5cf6;
+      --cyan: #06b6d4;
     }
 
     * {
@@ -39,853 +35,379 @@
     }
 
     body {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg-primary);
       color: var(--text-primary);
+      line-height: 1.5;
       min-height: 100vh;
-      overflow-x: hidden;
     }
 
-    /* Scanline effect */
-    body::before {
-      content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0, 0, 0, 0.03) 2px,
-        rgba(0, 0, 0, 0.03) 4px
-      );
-      z-index: 1000;
-    }
-
-    /* Header */
-    .header {
+    header {
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border);
-      padding: 1rem 2rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      padding: 0.75rem 1.5rem;
       position: sticky;
       top: 0;
       z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
     .logo {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.75rem;
     }
 
     .logo-icon {
-      width: 40px;
-      height: 40px;
-      background: var(--gradient-danger);
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--red) 0%, var(--yellow) 100%);
       border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.5rem;
-      animation: pulse 2s ease-in-out infinite;
+      font-size: 1rem;
     }
 
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
+    .logo h1 {
+      font-size: 1rem;
+      font-weight: 600;
     }
 
-    .logo-text {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1.5rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .logo-text span {
-      color: var(--accent-red);
-    }
-
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 2rem;
-    }
-
-    .status-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+    .logo span {
+      color: var(--text-muted);
       font-size: 0.75rem;
+      font-weight: 400;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       color: var(--text-secondary);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
     }
 
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent-green);
-      animation: blink 1s ease-in-out infinite;
+    .btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-light);
+      color: var(--text-primary);
     }
 
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+    .btn-primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: white;
     }
 
-    /* Main container */
-    .container {
-      max-width: 1600px;
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    main {
+      padding: 1.5rem;
+      max-width: 1800px;
       margin: 0 auto;
-      padding: 2rem;
     }
 
-    /* Stats grid */
-    .stats-grid {
+    .stats-row {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 1rem;
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 900px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
     }
 
     .stat-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      position: relative;
-      overflow: hidden;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
     }
 
-    .stat-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: var(--accent-blue);
-    }
-
-    .stat-card.critical::before {
-      background: var(--gradient-danger);
-    }
-
-    .stat-card.warning::before {
-      background: var(--gradient-warning);
-    }
+    .stat-card.danger { border-left: 3px solid var(--red); }
+    .stat-card.warning { border-left: 3px solid var(--yellow); }
 
     .stat-label {
       font-size: 0.7rem;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.05em;
       color: var(--text-muted);
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.25rem;
     }
 
     .stat-value {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 2rem;
+      font-size: 1.5rem;
       font-weight: 700;
-      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
     }
 
-    .stat-value.critical {
-      color: var(--accent-red);
-    }
+    .stat-value.red { color: var(--red); }
+    .stat-value.yellow { color: var(--yellow); }
 
-    .stat-value.warning {
-      color: var(--accent-yellow);
-    }
-
-    .stat-subtext {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 0.25rem;
-    }
-
-    /* Filters */
-    .filters {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
+    .filters-bar {
       display: flex;
-      gap: 1.5rem;
-      align-items: center;
       flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      align-items: center;
     }
 
     .filter-group {
       display: flex;
-      flex-direction: column;
+      align-items: center;
       gap: 0.5rem;
     }
 
-    .filter-label {
-      font-size: 0.65rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
+    .filter-group label {
+      font-size: 0.75rem;
       color: var(--text-muted);
     }
 
-    .filter-input {
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.5rem 1rem;
-      color: var(--text-primary);
-      font-family: inherit;
-      font-size: 0.875rem;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    .filter-input:focus {
-      border-color: var(--accent-blue);
-    }
-
-    .filter-input::placeholder {
-      color: var(--text-muted);
-    }
-
-    select.filter-input {
-      cursor: pointer;
-      min-width: 150px;
-    }
-
-    .btn {
-      background: var(--accent-blue);
-      border: none;
-      border-radius: 6px;
-      padding: 0.5rem 1.5rem;
-      color: white;
-      font-family: inherit;
-      font-size: 0.875rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-    }
-
-    .btn-danger {
-      background: var(--accent-red);
-    }
-
-    .btn-danger:hover {
-      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-    }
-
-    /* Positions table */
-    .positions-section {
+    .filter-select {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-
-    .section-header {
-      padding: 1rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .section-title {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .section-title .icon {
-      font-size: 1.25rem;
-    }
-
-    .positions-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .positions-table th {
-      background: var(--bg-tertiary);
-      padding: 0.75rem 1rem;
-      text-align: left;
-      font-size: 0.65rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--text-muted);
-      font-weight: 500;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .positions-table td {
-      padding: 1rem;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.875rem;
-    }
-
-    .positions-table tr:hover {
-      background: var(--bg-tertiary);
-    }
-
-    .positions-table tr.critical-row {
-      background: rgba(239, 68, 68, 0.05);
-      animation: criticalPulse 2s ease-in-out infinite;
-    }
-
-    @keyframes criticalPulse {
-      0%, 100% { background: rgba(239, 68, 68, 0.05); }
-      50% { background: rgba(239, 68, 68, 0.1); }
-    }
-
-    .positions-table tr.warning-row {
-      background: rgba(234, 179, 8, 0.03);
-    }
-
-    /* Cell styles */
-    .address-cell {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.75rem;
-    }
-
-    .address-cell a {
-      color: var(--accent-cyan);
-      text-decoration: none;
-    }
-
-    .address-cell a:hover {
-      text-decoration: underline;
-    }
-
-    .coin-cell {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-weight: 600;
-    }
-
-    .direction-badge {
-      font-size: 0.65rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      font-weight: 600;
-    }
-
-    .direction-badge.long {
-      background: rgba(34, 197, 94, 0.2);
-      color: var(--accent-green);
-    }
-
-    .direction-badge.short {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--accent-red);
-    }
-
-    .value-cell {
-      font-weight: 500;
-    }
-
-    .price-cell {
-      color: var(--text-secondary);
-      font-size: 0.8rem;
-    }
-
-    .danger-cell {
-      font-weight: 700;
-    }
-
-    .danger-cell.critical {
-      color: var(--accent-red);
-    }
-
-    .danger-cell.warning {
-      color: var(--accent-yellow);
-    }
-
-    .danger-badge {
-      font-size: 0.6rem;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .danger-badge.critical {
-      background: var(--gradient-danger);
-      color: white;
-      box-shadow: var(--glow-red);
-    }
-
-    .danger-badge.warning {
-      background: var(--gradient-warning);
-      color: black;
-      box-shadow: var(--glow-yellow);
-    }
-
-    .new-badge {
-      font-size: 0.55rem;
-      padding: 0.15rem 0.4rem;
-      border-radius: 3px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-      color: white;
-      animation: newPulse 1.5s ease-in-out infinite;
-      margin-left: 0.5rem;
-    }
-
-    @keyframes newPulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.8; transform: scale(1.05); }
-    }
-
-    /* Whale type badges */
-    .whale-badge {
-      font-size: 0.55rem;
-      padding: 0.15rem 0.4rem;
-      border-radius: 3px;
-      font-weight: 600;
-      margin-left: 0.5rem;
-    }
-
-    .whale-badge.profitable {
-      background: rgba(34, 197, 94, 0.2);
-      color: var(--accent-green);
-      border: 1px solid var(--accent-green);
-    }
-
-    .whale-badge.losing {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--accent-red);
-      border: 1px solid var(--accent-red);
-    }
-
-    .total-pnl {
-      font-size: 0.65rem;
-      margin-top: 0.25rem;
-    }
-
-    .total-pnl.positive {
-      color: var(--accent-green);
-    }
-
-    .total-pnl.negative {
-      color: var(--accent-red);
-    }
-
-    .insider-alert {
-      background: rgba(139, 92, 246, 0.1);
-      border: 1px dashed var(--accent-purple);
-      border-radius: 4px;
-      padding: 0.25rem 0.5rem;
-      font-size: 0.65rem;
-      color: var(--accent-purple);
-      margin-top: 0.25rem;
-    }
-
-    /* Wallet Info */
-    .wallet-info {
-      display: flex;
-      gap: 1rem;
-      margin-top: 0.5rem;
-      font-size: 0.7rem;
-      color: var(--text-muted);
-    }
-
-    .wallet-stat {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-
-    .wallet-stat .label {
-      color: var(--text-muted);
-    }
-
-    .wallet-stat .value {
-      color: var(--accent-cyan);
-      font-weight: 600;
-    }
-
-    /* Other Positions Expandable */
-    .other-positions-toggle {
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 0.25rem 0.5rem;
-      font-size: 0.65rem;
-      color: var(--accent-blue);
-      cursor: pointer;
-      margin-top: 0.5rem;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      transition: all 0.2s;
-    }
-
-    .other-positions-toggle:hover {
-      background: var(--accent-blue);
-      color: white;
-    }
-
-    .other-positions-container {
-      display: none;
-      margin-top: 0.5rem;
-      padding: 0.75rem;
-      background: var(--bg-tertiary);
-      border-radius: 6px;
-      border: 1px solid var(--border);
-    }
-
-    .other-positions-container.expanded {
-      display: block;
-      animation: slideDown 0.2s ease;
-    }
-
-    @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .other-position-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.5rem;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.75rem;
-    }
-
-    .other-position-item:last-child {
-      border-bottom: none;
-    }
-
-    .other-pos-coin {
-      font-weight: 600;
       color: var(--text-primary);
-      min-width: 60px;
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-family: inherit;
+      cursor: pointer;
     }
 
-    .other-pos-direction {
-      font-size: 0.6rem;
-      padding: 0.15rem 0.4rem;
-      border-radius: 3px;
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--blue);
     }
 
-    .other-pos-direction.long {
-      background: rgba(34, 197, 94, 0.2);
-      color: var(--accent-green);
-    }
-
-    .other-pos-direction.short {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--accent-red);
-    }
-
-    .other-pos-size {
-      color: var(--text-secondary);
-    }
-
-    .other-pos-pnl {
-      font-weight: 500;
-    }
-
-    .other-pos-pnl.positive {
-      color: var(--accent-green);
-    }
-
-    .other-pos-pnl.negative {
-      color: var(--accent-red);
-    }
-
-    /* Position count badge */
-    .position-count-badge {
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0.15rem 0.5rem;
-      font-size: 0.6rem;
-      color: var(--text-muted);
-      margin-left: 0.5rem;
-    }
-
-<<<<<<< HEAD
-    /* Main layout - three columns */
-    .main-content {
+    .grid-layout {
       display: grid;
-      grid-template-columns: 1fr 1fr 320px;
+      grid-template-columns: 1fr 1fr 340px;
       gap: 1rem;
       align-items: start;
-=======
-    /* Main layout - two columns */
-    .main-content {
-      display: grid;
-      grid-template-columns: 1fr 350px;
-      gap: 1.5rem;
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
     }
 
     @media (max-width: 1400px) {
-      .main-content {
-<<<<<<< HEAD
-        grid-template-columns: 1fr 1fr;
-      }
-      .liq-panel {
-        grid-column: span 2;
-      }
+      .grid-layout { grid-template-columns: 1fr 1fr; }
+      .liq-panel { grid-column: span 2; }
     }
 
     @media (max-width: 900px) {
-      .main-content {
-        grid-template-columns: 1fr;
-      }
-      .liq-panel {
-        grid-column: span 1;
-      }
-=======
-        grid-template-columns: 1fr;
-      }
-    }
-
-    /* Positions split layout */
-    .positions-split {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-
-    @media (max-width: 1200px) {
-      .positions-split {
-        grid-template-columns: 1fr;
-      }
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
+      .grid-layout { grid-template-columns: 1fr; }
+      .liq-panel { grid-column: span 1; }
     }
 
     .position-column {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
     }
 
-    .position-column.longs {
-      border-top: 3px solid var(--accent-green);
-    }
-
-    .position-column.shorts {
-      border-top: 3px solid var(--accent-red);
-    }
-
     .column-header {
-      padding: 1rem 1.25rem;
+      padding: 1rem;
       border-bottom: 1px solid var(--border);
-      background: var(--bg-tertiary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
+
+    .column-header.long { border-top: 3px solid var(--green); }
+    .column-header.short { border-top: 3px solid var(--red); }
 
     .column-title {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1rem;
+      font-size: 0.85rem;
       font-weight: 600;
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
 
-    .column-title.longs {
-      color: var(--accent-green);
-    }
+    .column-title.long { color: var(--green); }
+    .column-title.short { color: var(--red); }
 
-    .column-title.shorts {
-      color: var(--accent-red);
-    }
-
-    .column-stats {
-      display: flex;
-      gap: 1rem;
-      margin-top: 0.5rem;
-      font-size: 0.7rem;
-    }
-
-    .column-stat {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-
-    .column-stat .label {
+    .column-meta {
+      font-size: 0.75rem;
       color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
     }
 
-    .column-stat .value {
-      font-weight: 600;
-    }
+    .column-meta strong { color: var(--text-secondary); }
 
-    .column-stat .value.green {
-      color: var(--accent-green);
-    }
-
-    .column-stat .value.red {
-      color: var(--accent-red);
-    }
-
-    .position-list {
-<<<<<<< HEAD
-      /* No scroll - natural height */
-=======
-      max-height: 600px;
-      overflow-y: auto;
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
-    }
-
-    .position-card {
+    .pos-card {
       padding: 1rem;
       border-bottom: 1px solid var(--border);
-      transition: background 0.2s;
+      transition: background 0.15s;
     }
 
-    .position-card:hover {
-      background: var(--bg-tertiary);
-    }
+    .pos-card:hover { background: var(--bg-hover); }
+    .pos-card:last-child { border-bottom: none; }
+    .pos-card.critical { background: rgba(239, 68, 68, 0.05); }
 
-    .position-card.critical {
-      background: rgba(239, 68, 68, 0.05);
-      border-left: 3px solid var(--accent-red);
-    }
-
-    .position-card.warning {
-      background: rgba(234, 179, 8, 0.03);
-      border-left: 3px solid var(--accent-yellow);
-    }
-
-    .position-top {
+    .pos-row-1 {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       margin-bottom: 0.5rem;
     }
 
-    .position-address {
+    .pos-address {
       display: flex;
       align-items: center;
+      gap: 0.5rem;
       flex-wrap: wrap;
-      gap: 0.25rem;
     }
 
-    .position-address a {
-      color: var(--accent-cyan);
-      text-decoration: none;
+    .pos-address a {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.8rem;
+      color: var(--cyan);
+      text-decoration: none;
     }
 
-    .position-address a:hover {
-      text-decoration: underline;
-    }
+    .pos-address a:hover { text-decoration: underline; }
 
-    .position-coin {
-      font-size: 1.1rem;
-      font-weight: 700;
-    }
-
-    .position-middle {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0.75rem;
-      margin: 0.75rem 0;
-      padding: 0.75rem;
-      background: var(--bg-tertiary);
-      border-radius: 6px;
-    }
-
-    .position-stat {
-      text-align: center;
-    }
-
-    .position-stat-label {
+    .badge {
       font-size: 0.6rem;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      letter-spacing: 0.05em;
-    }
-
-    .position-stat-value {
-      font-size: 0.9rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
       font-weight: 600;
-      margin-top: 0.15rem;
+      text-transform: uppercase;
     }
 
-    .position-bottom {
+    .badge-new { background: var(--cyan); color: var(--bg-primary); }
+    .badge-profitable { background: rgba(16, 185, 129, 0.15); color: var(--green); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-losing { background: rgba(239, 68, 68, 0.15); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-critical { background: var(--red); color: white; }
+    .badge-warning { background: var(--yellow); color: var(--bg-primary); }
+
+    .pos-alltime {
+      font-size: 0.75rem;
+      padding: 0.4rem 0.6rem;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.75rem;
     }
 
-    .position-prices {
+    .pos-alltime-label { color: var(--text-muted); }
+    .pos-alltime-value { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+    .pos-alltime-value.positive { color: var(--green); }
+    .pos-alltime-value.negative { color: var(--red); }
+
+    .pos-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .pos-field {
+      background: var(--bg-secondary);
+      padding: 0.5rem;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .pos-field-label {
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .pos-field-value {
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 0.15rem;
+    }
+
+    .pos-field-value.red { color: var(--red); }
+    .pos-field-value.yellow { color: var(--yellow); }
+    .pos-field-value.green { color: var(--green); }
+    .pos-field-value.purple { color: var(--purple); }
+
+    .pos-prices {
       display: flex;
       gap: 1rem;
+      font-size: 0.7rem;
       color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
     }
 
-    .position-prices span {
+    .pos-prices b { color: var(--text-secondary); }
+    .pos-prices .liq { color: var(--red); }
+
+    .other-pos-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      cursor: pointer;
+      padding: 0.25rem 0;
+      margin-top: 0.5rem;
+      font-family: inherit;
+    }
+
+    .other-pos-btn:hover { color: var(--text-secondary); }
+
+    .other-pos-list {
+      display: none;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed var(--border);
+    }
+
+    .other-pos-list.show { display: block; }
+
+    .other-pos-item {
       display: flex;
-      gap: 0.25rem;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.35rem 0;
+      font-size: 0.7rem;
     }
 
-    .empty-column {
+    .other-pos-item span { font-family: 'JetBrains Mono', monospace; }
+
+    .empty-state {
       padding: 2rem;
       text-align: center;
       color: var(--text-muted);
       font-size: 0.85rem;
     }
 
-    /* Liquidations Panel */
     .liq-panel {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
-<<<<<<< HEAD
       position: sticky;
-      top: 80px;
-      align-self: start;
-=======
-      height: fit-content;
-      max-height: calc(100vh - 200px);
-      position: sticky;
-      top: 100px;
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
+      top: 70px;
     }
 
     .liq-header {
-      padding: 1rem 1.25rem;
+      padding: 1rem;
       border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--bg-tertiary);
-    }
-
-    .liq-title {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       font-weight: 600;
       display: flex;
       align-items: center;
@@ -895,415 +417,149 @@
     .liq-stats {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.5rem;
-      padding: 0.75rem 1rem;
       border-bottom: 1px solid var(--border);
-      background: var(--bg-secondary);
     }
 
     .liq-stat {
+      padding: 0.75rem;
       text-align: center;
-      padding: 0.5rem;
-      border-radius: 6px;
-      background: var(--bg-tertiary);
     }
 
-    .liq-stat.longs {
-      border-left: 3px solid var(--accent-green);
-    }
-
-    .liq-stat.shorts {
-      border-left: 3px solid var(--accent-red);
-    }
+    .liq-stat:first-child { border-right: 1px solid var(--border); }
 
     .liq-stat-label {
       font-size: 0.6rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
       color: var(--text-muted);
+      letter-spacing: 0.05em;
     }
 
     .liq-stat-value {
-      font-size: 1rem;
+      font-size: 1.1rem;
       font-weight: 700;
-      margin-top: 0.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 0.15rem;
     }
 
-    .liq-stat.longs .liq-stat-value {
-      color: var(--accent-green);
-    }
-
-    .liq-stat.shorts .liq-stat-value {
-      color: var(--accent-red);
-    }
+    .liq-stat-value.green { color: var(--green); }
+    .liq-stat-value.red { color: var(--red); }
 
     .liq-filters {
-      padding: 0.75rem 1rem;
+      padding: 0.5rem 0.75rem;
       border-bottom: 1px solid var(--border);
       display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
+      gap: 0.35rem;
     }
 
     .liq-filter-btn {
-      background: var(--bg-tertiary);
+      background: transparent;
       border: 1px solid var(--border);
-      border-radius: 4px;
+      color: var(--text-muted);
       padding: 0.25rem 0.5rem;
+      border-radius: 4px;
       font-size: 0.65rem;
-      color: var(--text-secondary);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.15s;
+      font-family: inherit;
     }
 
-    .liq-filter-btn:hover,
-    .liq-filter-btn.active {
-      background: var(--accent-blue);
-      border-color: var(--accent-blue);
+    .liq-filter-btn:hover, .liq-filter-btn.active {
+      background: var(--blue);
+      border-color: var(--blue);
       color: white;
     }
 
     .liq-list {
-<<<<<<< HEAD
-      max-height: 400px;
-=======
-      max-height: 500px;
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
+      max-height: 300px;
       overflow-y: auto;
     }
 
     .liq-item {
       display: flex;
       align-items: center;
-<<<<<<< HEAD
       padding: 0.5rem 0.75rem;
       border-bottom: 1px solid var(--border);
       gap: 0.5rem;
-      /* NO animation - prevents list jumping */
-=======
-      padding: 0.6rem 1rem;
-      border-bottom: 1px solid var(--border);
-      gap: 0.75rem;
-      transition: background 0.2s;
-      animation: slideInLiq 0.3s ease;
     }
 
-    @keyframes slideInLiq {
-      from { opacity: 0; transform: translateX(20px); }
-      to { opacity: 1; transform: translateX(0); }
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
-    }
-
-    .liq-item:hover {
-      background: var(--bg-tertiary);
-    }
+    .liq-item:last-child { border-bottom: none; }
 
     .liq-side {
-      width: 4px;
-      height: 36px;
+      width: 3px;
+      height: 28px;
       border-radius: 2px;
     }
 
-    .liq-side.long {
-      background: var(--accent-green);
-    }
+    .liq-side.long { background: var(--green); }
+    .liq-side.short { background: var(--red); }
 
-    .liq-side.short {
-      background: var(--accent-red);
-    }
-
-    .liq-info {
-      flex: 1;
-      min-width: 0;
-    }
+    .liq-info { flex: 1; }
 
     .liq-coin {
+      font-size: 0.8rem;
       font-weight: 600;
-      font-size: 0.85rem;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.35rem;
     }
 
-    .liq-direction {
-      font-size: 0.55rem;
-      padding: 0.1rem 0.3rem;
-      border-radius: 3px;
+    .liq-badge {
+      font-size: 0.5rem;
+      padding: 0.1rem 0.25rem;
+      border-radius: 2px;
       font-weight: 600;
     }
 
-    .liq-direction.long {
-      background: rgba(34, 197, 94, 0.2);
-      color: var(--accent-green);
-    }
+    .liq-badge.long { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+    .liq-badge.short { background: rgba(239, 68, 68, 0.2); color: var(--red); }
 
-    .liq-direction.short {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--accent-red);
-    }
-
-    .liq-details {
-      font-size: 0.7rem;
+    .liq-price {
+      font-size: 0.65rem;
       color: var(--text-muted);
-      margin-top: 0.15rem;
+      font-family: 'JetBrains Mono', monospace;
     }
 
-    .liq-value {
-      text-align: right;
-    }
+    .liq-value { text-align: right; }
 
     .liq-amount {
-      font-weight: 700;
-      font-size: 0.85rem;
-      color: var(--text-primary);
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
     }
 
     .liq-time {
       font-size: 0.6rem;
       color: var(--text-muted);
-      margin-top: 0.15rem;
     }
 
-    .liq-empty {
-      padding: 2rem;
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 0.8rem;
+    .whale-section {
+      border-top: 2px solid var(--purple);
+      background: rgba(139, 92, 246, 0.03);
     }
 
-    /* Whale Liquidations Section */
-    .whale-liq-section {
-      border-top: 2px solid var(--border);
-      margin-top: 0.5rem;
-    }
-
-    .whale-liq-header {
-      padding: 0.75rem 1rem;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(239, 68, 68, 0.1) 100%);
-      font-size: 0.8rem;
+    .whale-header {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
       font-weight: 600;
+      color: var(--purple);
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      color: var(--accent-purple);
+      gap: 0.35rem;
       border-bottom: 1px solid var(--border);
     }
 
-    .whale-liq-list {
-      max-height: 200px;
+    .whale-list {
+      max-height: 180px;
       overflow-y: auto;
     }
 
-    .whale-liq-item {
-      display: flex;
-      align-items: center;
-      padding: 0.75rem 1rem;
-      border-bottom: 1px solid var(--border);
-      gap: 0.75rem;
-      background: linear-gradient(90deg, rgba(139, 92, 246, 0.05) 0%, transparent 100%);
-      animation: whaleSlide 0.5s ease;
-    }
+    .whale-list .liq-amount { color: var(--purple); }
 
-    @keyframes whaleSlide {
-      from { opacity: 0; transform: translateX(30px); }
-      to { opacity: 1; transform: translateX(0); }
-    }
-
-    .whale-liq-item .liq-amount {
-      font-size: 1rem;
-      color: var(--accent-purple);
-    }
-
-    .leverage-cell {
-      color: var(--accent-purple);
-      font-weight: 600;
-    }
-
-    .pnl-cell.positive {
-      color: var(--accent-green);
-    }
-
-    .pnl-cell.negative {
-      color: var(--accent-red);
-    }
-
-    /* Distance bar */
-    .distance-bar {
-      width: 100%;
-      height: 6px;
-      background: var(--bg-tertiary);
-      border-radius: 3px;
-      overflow: hidden;
-      margin-top: 0.25rem;
-    }
-
-    .distance-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: width 0.3s ease;
-    }
-
-    .distance-fill.critical {
-      background: var(--gradient-danger);
-    }
-
-    .distance-fill.warning {
-      background: var(--gradient-warning);
-    }
-
-    /* Empty state */
-    .empty-state {
-      padding: 4rem 2rem;
-      text-align: center;
-      color: var(--text-muted);
-    }
-
-    .empty-state .icon {
-      font-size: 3rem;
-      margin-bottom: 1rem;
-      opacity: 0.5;
-    }
-
-    /* Loading */
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
-      gap: 0.5rem;
-      color: var(--text-muted);
-    }
-
-    .spinner {
-      width: 20px;
-      height: 20px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent-blue);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* Modal for adding address */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      opacity: 0;
-      visibility: hidden;
-      transition: all 0.3s;
-    }
-
-    .modal-overlay.active {
-      opacity: 1;
-      visibility: visible;
-    }
-
-    .modal {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 2rem;
-      width: 100%;
-      max-width: 500px;
-      transform: translateY(20px);
-      transition: transform 0.3s;
-    }
-
-    .modal-overlay.active .modal {
-      transform: translateY(0);
-    }
-
-    .modal-title {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 1.5rem;
-    }
-
-    .modal-input {
-      width: 100%;
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.75rem 1rem;
-      color: var(--text-primary);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.875rem;
-      margin-bottom: 1rem;
-      outline: none;
-    }
-
-    .modal-input:focus {
-      border-color: var(--accent-blue);
-    }
-
-    .modal-buttons {
-      display: flex;
-      gap: 1rem;
-      justify-content: flex-end;
-    }
-
-    .btn-ghost {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-    }
-
-    .btn-ghost:hover {
-      background: var(--bg-tertiary);
-      box-shadow: none;
-      transform: none;
-    }
-
-    /* Responsive */
-    @media (max-width: 1200px) {
-      .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (max-width: 768px) {
-      .header {
-        flex-direction: column;
-        gap: 1rem;
-      }
-
-      .stats-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .filters {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .positions-table {
-        font-size: 0.75rem;
-      }
-
-      .positions-table th,
-      .positions-table td {
-        padding: 0.5rem;
-      }
-    }
-
-    /* Toast notifications */
     .toast-container {
       position: fixed;
-      bottom: 2rem;
-      right: 2rem;
-      z-index: 1001;
+      top: 80px;
+      right: 20px;
+      z-index: 1000;
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
@@ -1312,481 +568,364 @@
     .toast {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem 1.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
+      border-left: 3px solid var(--red);
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
       animation: slideIn 0.3s ease;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      max-width: 320px;
     }
 
     @keyframes slideIn {
-      from {
-        transform: translateX(100%);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
     }
 
-    .toast.critical {
-      border-left: 3px solid var(--accent-red);
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
     }
 
-    .toast.warning {
-      border-left: 3px solid var(--accent-yellow);
+    .modal-overlay.show { display: flex; }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      width: 90%;
+      max-width: 400px;
     }
 
-    .toast.info {
-      border-left: 3px solid var(--accent-blue);
+    .modal h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
     }
+
+    .modal input {
+      width: 100%;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 1rem;
+    }
+
+    .modal input:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
   </style>
 </head>
 <body>
-  <header class="header">
+  <header>
     <div class="logo">
-      <div class="logo-icon">🎯</div>
-      <div class="logo-text">HL <span>LIQ</span> HUNTER</div>
+      <div class="logo-icon">⚡</div>
+      <div>
+        <h1>HL Liquidation Hunter</h1>
+        <span>Real-time high-risk position tracker</span>
+      </div>
     </div>
-    <div class="status-bar">
-      <div class="status-item">
-        <div class="status-dot"></div>
-        <span>LIVE</span>
-      </div>
-      <div class="status-item">
-        <span id="lastUpdate">Loading...</span>
-      </div>
-      <div class="status-item">
-        <span id="addressCount">0</span> addresses tracked
-      </div>
+    <div class="header-actions">
+      <button class="btn" onclick="openModal()">+ Add Address</button>
+      <button class="btn btn-primary" onclick="refreshData()">↻ Refresh</button>
     </div>
   </header>
 
-  <main class="container">
-    <!-- Stats Grid -->
-    <div class="stats-grid">
-      <div class="stat-card critical">
+  <main>
+    <div class="stats-row">
+      <div class="stat-card danger">
         <div class="stat-label">Critical (&lt;5%)</div>
-        <div class="stat-value critical" id="criticalCount">0</div>
-        <div class="stat-subtext">Near liquidation</div>
+        <div class="stat-value red" id="criticalCount">0</div>
       </div>
       <div class="stat-card warning">
         <div class="stat-label">Warning (5-10%)</div>
-        <div class="stat-value warning" id="warningCount">0</div>
-        <div class="stat-subtext">At risk</div>
+        <div class="stat-value yellow" id="warningCount">0</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Total Value at Risk</div>
         <div class="stat-value" id="totalValue">$0</div>
-        <div class="stat-subtext">Combined position size</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Positions Tracked</div>
         <div class="stat-value" id="totalPositions">0</div>
-        <div class="stat-subtext">$2M+ positions</div>
       </div>
     </div>
 
-    <!-- Filters -->
-    <div class="filters">
+    <div class="filters-bar">
       <div class="filter-group">
-        <label class="filter-label">Min Position Size</label>
-        <select class="filter-input" id="minSizeFilter">
+        <label>Min Size</label>
+        <select class="filter-select" id="minSizeFilter">
           <option value="2000000">$2M+</option>
           <option value="5000000">$5M+</option>
           <option value="10000000">$10M+</option>
           <option value="20000000">$20M+</option>
-          <option value="50000000">$50M+</option>
         </select>
       </div>
       <div class="filter-group">
-        <label class="filter-label">Max Distance to Liq</label>
-        <select class="filter-input" id="maxDistanceFilter">
+        <label>Max Distance</label>
+        <select class="filter-select" id="maxDistanceFilter">
           <option value="10">10%</option>
           <option value="5">5%</option>
           <option value="3">3%</option>
-          <option value="2">2%</option>
-          <option value="1">1%</option>
         </select>
       </div>
       <div class="filter-group">
-        <label class="filter-label">Danger Level</label>
-        <select class="filter-input" id="dangerFilter">
+        <label>Level</label>
+        <select class="filter-select" id="dangerFilter">
           <option value="">All</option>
-          <option value="CRITICAL">Critical Only</option>
-          <option value="WARNING">Warning Only</option>
+          <option value="CRITICAL">Critical</option>
+          <option value="WARNING">Warning</option>
         </select>
       </div>
       <div class="filter-group">
-        <label class="filter-label">Coin</label>
-        <select class="filter-input" id="coinFilter">
-          <option value="">All Coins</option>
+        <label>Coin</label>
+        <select class="filter-select" id="coinFilter">
+          <option value="">All</option>
         </select>
       </div>
-      <div style="flex-grow: 1;"></div>
-      <button class="btn" onclick="openAddressModal()">+ Add Address</button>
-      <button class="btn btn-danger" onclick="refreshData()">↻ Refresh</button>
     </div>
 
-    <!-- Main Content: Positions + Liquidations -->
-    <div class="main-content">
-<<<<<<< HEAD
-      <!-- LONGS Column -->
-      <div class="position-column longs">
-        <div class="column-header">
-          <div class="column-title longs">
-            🟢 LONGS AT RISK
-          </div>
-          <div class="column-stats">
-            <div class="column-stat">
-              <span class="label">Total:</span>
-              <span class="value green" id="longsAtRisk">$0</span>
-            </div>
-            <div class="column-stat">
-              <span class="label">Count:</span>
-              <span class="value" id="longsCount">0</span>
-            </div>
-          </div>
+    <div class="grid-layout">
+      <div class="position-column">
+        <div class="column-header long">
+          <div class="column-title long">🟢 Longs at Risk</div>
+          <div class="column-meta"><strong id="longsTotal">$0</strong> · <span id="longsCount">0</span> positions</div>
         </div>
-        <div class="position-list" id="longsList">
-          <div class="empty-column">No longs at risk</div>
-        </div>
+        <div id="longsList"><div class="empty-state">No longs at risk</div></div>
       </div>
 
-      <!-- SHORTS Column -->
-      <div class="position-column shorts">
-        <div class="column-header">
-          <div class="column-title shorts">
-            🔴 SHORTS AT RISK
-          </div>
-          <div class="column-stats">
-            <div class="column-stat">
-              <span class="label">Total:</span>
-              <span class="value red" id="shortsAtRisk">$0</span>
-            </div>
-            <div class="column-stat">
-              <span class="label">Count:</span>
-              <span class="value" id="shortsCount">0</span>
-            </div>
-          </div>
+      <div class="position-column">
+        <div class="column-header short">
+          <div class="column-title short">🔴 Shorts at Risk</div>
+          <div class="column-meta"><strong id="shortsTotal">$0</strong> · <span id="shortsCount">0</span> positions</div>
         </div>
-        <div class="position-list" id="shortsList">
-          <div class="empty-column">No shorts at risk</div>
-=======
-      <!-- Positions Split: Longs | Shorts -->
-      <div class="positions-split">
-        <!-- LONGS Column -->
-        <div class="position-column longs">
-          <div class="column-header">
-            <div class="column-title longs">
-              🟢 LONGS AT RISK
-            </div>
-            <div class="column-stats">
-              <div class="column-stat">
-                <span class="label">Total:</span>
-                <span class="value green" id="longsAtRisk">$0</span>
-              </div>
-              <div class="column-stat">
-                <span class="label">Count:</span>
-                <span class="value" id="longsCount">0</span>
-              </div>
-            </div>
-          </div>
-          <div class="position-list" id="longsList">
-            <div class="empty-column">No longs at risk</div>
-          </div>
-        </div>
-
-        <!-- SHORTS Column -->
-        <div class="position-column shorts">
-          <div class="column-header">
-            <div class="column-title shorts">
-              🔴 SHORTS AT RISK
-            </div>
-            <div class="column-stats">
-              <div class="column-stat">
-                <span class="label">Total:</span>
-                <span class="value red" id="shortsAtRisk">$0</span>
-              </div>
-              <div class="column-stat">
-                <span class="label">Count:</span>
-                <span class="value" id="shortsCount">0</span>
-              </div>
-            </div>
-          </div>
-          <div class="position-list" id="shortsList">
-            <div class="empty-column">No shorts at risk</div>
-          </div>
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
-        </div>
+        <div id="shortsList"><div class="empty-state">No shorts at risk</div></div>
       </div>
 
-      <!-- Recent Liquidations Panel -->
       <div class="liq-panel">
-        <div class="liq-header">
-          <div class="liq-title">
-            <span>💀</span>
-            Recent Liquidations
-          </div>
-        </div>
+        <div class="liq-header">💀 Recent Liquidations</div>
         <div class="liq-stats">
-          <div class="liq-stat longs">
+          <div class="liq-stat">
             <div class="liq-stat-label">Longs Liq'd</div>
-            <div class="liq-stat-value" id="liqLongValue">$0</div>
+            <div class="liq-stat-value green" id="liqLongValue">$0</div>
           </div>
-          <div class="liq-stat shorts">
+          <div class="liq-stat">
             <div class="liq-stat-label">Shorts Liq'd</div>
-            <div class="liq-stat-value" id="liqShortValue">$0</div>
+            <div class="liq-stat-value red" id="liqShortValue">$0</div>
           </div>
         </div>
         <div class="liq-filters">
           <button class="liq-filter-btn active" data-filter="all">All</button>
-<<<<<<< HEAD
           <button class="liq-filter-btn" data-filter="50000">$50K+</button>
           <button class="liq-filter-btn" data-filter="100000">$100K+</button>
           <button class="liq-filter-btn" data-filter="250000">$250K+</button>
-=======
-          <button class="liq-filter-btn" data-filter="10000">$10K+</button>
-          <button class="liq-filter-btn" data-filter="50000">$50K+</button>
-          <button class="liq-filter-btn" data-filter="100000">$100K+</button>
->>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
         </div>
-        <div class="liq-list" id="liqList">
-          <div class="liq-empty">Waiting for liquidations...</div>
-        </div>
-        
-        <!-- Whale Liquidations Section -->
-        <div class="whale-liq-section">
-          <div class="whale-liq-header">
-            <span>🐋💀</span>
-            Whale Liquidations ($500K+)
-          </div>
-          <div class="whale-liq-list" id="whaleLiqList">
-            <div class="liq-empty">No whale liquidations yet...</div>
-          </div>
+        <div class="liq-list" id="liqList"><div class="empty-state">Waiting for liquidations...</div></div>
+        <div class="whale-section">
+          <div class="whale-header">🐋 Whale Liquidations ($500K+)</div>
+          <div class="whale-list" id="whaleLiqList"><div class="empty-state">No whale liquidations yet</div></div>
         </div>
       </div>
     </div>
   </main>
 
-  <!-- Add Address Modal -->
-  <div class="modal-overlay" id="addressModal">
-    <div class="modal">
-      <div class="modal-title">Track New Address</div>
-      <input type="text" class="modal-input" id="newAddress" placeholder="0x..." />
-      <div class="modal-buttons">
-        <button class="btn btn-ghost" onclick="closeAddressModal()">Cancel</button>
-        <button class="btn" onclick="addAddress()">Add Address</button>
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>Add Address to Track</h3>
+      <input type="text" id="addressInput" placeholder="0x..." />
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitAddress()">Add</button>
       </div>
     </div>
   </div>
 
-  <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
-    let positions = [];
+    const API_BASE = '';
+    let currentLiqFilter = 'all';
     let previousPositions = new Map();
 
-    // Format numbers
     function formatUSD(value) {
-      if (value >= 1000000000) return '$' + (value / 1000000000).toFixed(2) + 'B';
-      if (value >= 1000000) return '$' + (value / 1000000).toFixed(2) + 'M';
-      if (value >= 1000) return '$' + (value / 1000).toFixed(1) + 'K';
-      return '$' + value.toFixed(2);
+      const num = Math.abs(value);
+      if (num >= 1000000) return '$' + (num / 1000000).toFixed(2) + 'M';
+      if (num >= 1000) return '$' + (num / 1000).toFixed(1) + 'K';
+      return '$' + num.toFixed(0);
     }
 
-    function formatPrice(value) {
-      if (value >= 1000) return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
-      if (value >= 1) return value.toFixed(4);
-      return value.toPrecision(4);
+    function formatPrice(price) {
+      if (!price) return '-';
+      if (price >= 10000) return price.toFixed(0);
+      if (price >= 100) return price.toFixed(1);
+      if (price >= 1) return price.toFixed(2);
+      return price.toFixed(4);
     }
 
-    // Fetch data from API
-    async function fetchPositions() {
-      const minSize = document.getElementById('minSizeFilter').value;
-      const maxDistance = document.getElementById('maxDistanceFilter').value;
-      const dangerLevel = document.getElementById('dangerFilter').value;
+    function timeAgo(timestamp) {
+      const seconds = Math.floor((Date.now() - timestamp) / 1000);
+      if (seconds < 60) return seconds + 's';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return minutes + 'm';
+      return Math.floor(minutes / 60) + 'h';
+    }
 
-      let url = `/api/positions?minSize=${minSize}&maxDistance=${maxDistance}`;
-      if (dangerLevel) url += `&dangerLevel=${dangerLevel}`;
+    function showToast(message) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 5000);
+    }
 
-      try {
-        const response = await fetch(url);
-        const data = await response.json();
-        return data;
-      } catch (error) {
-        console.error('Error fetching positions:', error);
-        return { positions: [], count: 0 };
+    function openModal() {
+      document.getElementById('modalOverlay').classList.add('show');
+      document.getElementById('addressInput').focus();
+    }
+
+    function closeModal(e) {
+      if (!e || e.target === document.getElementById('modalOverlay')) {
+        document.getElementById('modalOverlay').classList.remove('show');
+        document.getElementById('addressInput').value = '';
       }
+    }
+
+    async function submitAddress() {
+      const address = document.getElementById('addressInput').value.trim();
+      if (!address || !address.startsWith('0x')) {
+        showToast('Invalid address format');
+        return;
+      }
+      try {
+        await fetch(`${API_BASE}/api/add-address`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address })
+        });
+        showToast('Address added');
+        closeModal();
+        refreshData();
+      } catch (err) {
+        showToast('Failed to add address');
+      }
+    }
+
+    async function fetchPositions() {
+      const params = new URLSearchParams({
+        minSize: document.getElementById('minSizeFilter').value,
+        maxDistance: document.getElementById('maxDistanceFilter').value,
+        dangerLevel: document.getElementById('dangerFilter').value
+      });
+      const res = await fetch(`${API_BASE}/api/positions?${params}`);
+      return await res.json();
     }
 
     async function fetchStats() {
-      try {
-        const response = await fetch('/api/stats');
-        return await response.json();
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-        return null;
-      }
+      const res = await fetch(`${API_BASE}/api/stats`);
+      return await res.json();
     }
 
-    // Update UI
-    function updateStats(stats) {
-      if (!stats) return;
-
-      document.getElementById('criticalCount').textContent = stats.criticalCount;
-      document.getElementById('warningCount').textContent = stats.warningCount;
-      document.getElementById('totalValue').textContent = formatUSD(stats.totalValueAtRisk);
-      document.getElementById('totalPositions').textContent = stats.totalPositions;
-      document.getElementById('addressCount').textContent = stats.addressesTracked;
-
-      // Update last update time
-      const now = new Date();
-      document.getElementById('lastUpdate').textContent = 
-        `Updated: ${now.toLocaleTimeString()}`;
-
-      // Update coin filter
-      const coinFilter = document.getElementById('coinFilter');
-      const currentValue = coinFilter.value;
-      const coins = Object.keys(stats.byCoin || {}).sort();
-      
-      if (coins.length > 0) {
-        coinFilter.innerHTML = '<option value="">All Coins</option>' + 
-          coins.map(c => `<option value="${c}">${c}</option>`).join('');
-        coinFilter.value = currentValue;
-      }
+    async function fetchLiquidations() {
+      const minValue = currentLiqFilter === 'all' ? 0 : parseInt(currentLiqFilter);
+      const res = await fetch(`${API_BASE}/api/liquidations?minValue=${minValue}&limit=30`);
+      return await res.json();
     }
 
-    function renderPositions(data) {
-      const coinFilter = document.getElementById('coinFilter').value;
-
-      let longs = data.longs || [];
-      let shorts = data.shorts || [];
-      
-      if (coinFilter) {
-        longs = longs.filter(p => p.coin === coinFilter);
-        shorts = shorts.filter(p => p.coin === coinFilter);
-      }
-
-      // Update totals
-      document.getElementById('longsAtRisk').textContent = formatUSD(data.longsAtRisk || 0);
-      document.getElementById('shortsAtRisk').textContent = formatUSD(data.shortsAtRisk || 0);
-      document.getElementById('longsCount').textContent = longs.length;
-      document.getElementById('shortsCount').textContent = shorts.length;
-
-      // Render longs
-      const longsList = document.getElementById('longsList');
-      if (longs.length === 0) {
-        longsList.innerHTML = '<div class="empty-column">🟢 No longs at risk</div>';
-      } else {
-        longsList.innerHTML = longs.map((pos, idx) => renderPositionCard(pos, idx, 'long')).join('');
-      }
-
-      // Render shorts
-      const shortsList = document.getElementById('shortsList');
-      if (shorts.length === 0) {
-        shortsList.innerHTML = '<div class="empty-column">🔴 No shorts at risk</div>';
-      } else {
-        shortsList.innerHTML = shorts.map((pos, idx) => renderPositionCard(pos, idx + 1000, 'short')).join('');
-      }
-
-      // Check for new critical positions (for toasts)
-      [...longs, ...shorts].forEach(pos => {
-        const key = `${pos.user}-${pos.coin}`;
-        const prev = previousPositions.get(key);
-        
-        if (!prev && pos.dangerLevel === 'CRITICAL') {
-          showToast(`🚨 New CRITICAL: ${pos.coin} ${pos.direction} ${formatUSD(pos.positionUSD)} @ ${pos.distancePercent}%`, 'critical');
-        } else if (prev && prev.dangerLevel === 'WARNING' && pos.dangerLevel === 'CRITICAL') {
-          showToast(`⚠️ Upgraded to CRITICAL: ${pos.coin} ${pos.direction}`, 'critical');
-        }
-        
-        previousPositions.set(key, { ...pos });
-      });
+    async function fetchWhaleLiquidations() {
+      const res = await fetch(`${API_BASE}/api/whale-liquidations?limit=10`);
+      return await res.json();
     }
 
-    function renderPositionCard(pos, idx, type) {
-      const whaleIcon = pos.isProfitableWhale ? '💰' : '🎰';
-      const whaleLabel = pos.isProfitableWhale ? 'Profitable' : 'Losing';
-      const whaleClass = pos.isProfitableWhale ? 'profitable' : 'losing';
+    function renderPositionCard(pos, idx) {
+      const isProfitable = pos.isProfitableWhale;
+      const allTimePnl = pos.allTimePnl;
+      let pnlDisplay = 'N/A';
+      let pnlClass = '';
       
+      if (allTimePnl !== null && allTimePnl !== undefined) {
+        pnlDisplay = (allTimePnl >= 0 ? '+' : '') + formatUSD(allTimePnl);
+        pnlClass = allTimePnl >= 0 ? 'positive' : 'negative';
+      }
+
       return `
-        <div class="position-card ${pos.dangerLevel.toLowerCase()}">
-          <div class="position-top">
-            <div class="position-address">
+        <div class="pos-card ${pos.dangerLevel === 'CRITICAL' ? 'critical' : ''}">
+          <div class="pos-row-1">
+            <div class="pos-address">
               <a href="${pos.hyperliquidUrl}" target="_blank">${pos.userShort}</a>
-              ${pos.isNewAddress ? '<span class="new-badge">NEW</span>' : ''}
-              <span class="whale-badge ${whaleClass}">${whaleIcon} ${whaleLabel}</span>
-              ${pos.totalPositionCount > 1 ? `<span class="position-count-badge">${pos.totalPositionCount} pos</span>` : ''}
+              ${pos.isNewAddress ? '<span class="badge badge-new">NEW</span>' : ''}
+              <span class="badge ${isProfitable ? 'badge-profitable' : 'badge-losing'}">${isProfitable ? '💰 Profitable' : '🎰 Losing'}</span>
             </div>
-            <div>
-              <span class="danger-badge ${pos.dangerLevel.toLowerCase()}">${pos.dangerLevel}</span>
+            <span class="badge badge-${pos.dangerLevel.toLowerCase()}">${pos.dangerLevel}</span>
+          </div>
+          <div class="pos-alltime">
+            <span class="pos-alltime-label">All-Time PnL</span>
+            <span class="pos-alltime-value ${pnlClass}">${pnlDisplay}</span>
+          </div>
+          <div class="pos-grid">
+            <div class="pos-field">
+              <div class="pos-field-label">Coin</div>
+              <div class="pos-field-value">${pos.coin}</div>
+            </div>
+            <div class="pos-field">
+              <div class="pos-field-label">Size</div>
+              <div class="pos-field-value">${formatUSD(pos.positionUSD)}</div>
+            </div>
+            <div class="pos-field">
+              <div class="pos-field-label">Distance</div>
+              <div class="pos-field-value ${pos.dangerLevel === 'CRITICAL' ? 'red' : 'yellow'}">${pos.distancePercent}%</div>
+            </div>
+            <div class="pos-field">
+              <div class="pos-field-label">Leverage</div>
+              <div class="pos-field-value purple">${pos.leverage}x</div>
+            </div>
+            <div class="pos-field">
+              <div class="pos-field-label">This PnL</div>
+              <div class="pos-field-value ${pos.unrealizedPnl >= 0 ? 'green' : 'red'}">${pos.unrealizedPnl >= 0 ? '+' : ''}${formatUSD(pos.unrealizedPnl)}</div>
+            </div>
+            <div class="pos-field">
+              <div class="pos-field-label">Wallet</div>
+              <div class="pos-field-value">${pos.walletBalance ? formatUSD(pos.walletBalance) : '-'}</div>
             </div>
           </div>
-          
-          ${pos.isNewAddress && pos.dangerLevel === 'CRITICAL' ? '<div class="insider-alert">🎯 Potential Insider/Gambler</div>' : ''}
-          
-          ${pos.totalUnrealizedPnl !== undefined ? `
-            <div class="total-pnl ${pos.totalUnrealizedPnl >= 0 ? 'positive' : 'negative'}">
-              Wallet Total PnL: ${pos.totalUnrealizedPnl >= 0 ? '+' : ''}${formatUSD(pos.totalUnrealizedPnl)}
-            </div>
-          ` : ''}
-          
-          <div class="position-middle">
-            <div class="position-stat">
-              <div class="position-stat-label">Coin</div>
-              <div class="position-stat-value">${pos.coin}</div>
-            </div>
-            <div class="position-stat">
-              <div class="position-stat-label">Size</div>
-              <div class="position-stat-value">${formatUSD(pos.positionUSD)}</div>
-            </div>
-            <div class="position-stat">
-              <div class="position-stat-label">Distance</div>
-              <div class="position-stat-value" style="color: ${pos.dangerLevel === 'CRITICAL' ? 'var(--accent-red)' : 'var(--accent-yellow)'}">${pos.distancePercent}%</div>
-            </div>
-            <div class="position-stat">
-              <div class="position-stat-label">Leverage</div>
-              <div class="position-stat-value" style="color: var(--accent-purple)">${pos.leverage}x</div>
-            </div>
-            <div class="position-stat">
-              <div class="position-stat-label">PnL</div>
-              <div class="position-stat-value" style="color: ${pos.unrealizedPnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">${pos.unrealizedPnl >= 0 ? '+' : ''}${formatUSD(pos.unrealizedPnl)}</div>
-            </div>
-            <div class="position-stat">
-              <div class="position-stat-label">Wallet</div>
-              <div class="position-stat-value">${pos.walletBalance ? formatUSD(pos.walletBalance) : 'N/A'}</div>
-            </div>
+          <div class="pos-prices">
+            <span>Entry: <b>${formatPrice(pos.entryPrice)}</b></span>
+            <span>Mark: <b>${formatPrice(pos.markPrice)}</b></span>
+            <span class="liq">Liq: <b>${formatPrice(pos.liqPrice)}</b></span>
           </div>
-          
-          <div class="position-bottom">
-            <div class="position-prices">
-              <span>E: <b>${formatPrice(pos.entryPrice)}</b></span>
-              <span>M: <b>${formatPrice(pos.markPrice)}</b></span>
-              <span style="color: var(--accent-red)">L: <b>${formatPrice(pos.liqPrice)}</b></span>
-            </div>
-            ${pos.otherPositions && pos.otherPositions.length > 0 ? `
-              <button class="other-positions-toggle" onclick="toggleOtherPositions(${idx})">
-                📂 ${pos.otherPositions.length} more ▼
-              </button>
-            ` : ''}
-          </div>
-          
           ${pos.otherPositions && pos.otherPositions.length > 0 ? `
-            <div class="other-positions-container" id="other-pos-${idx}">
+            <button class="other-pos-btn" onclick="toggleOther(${idx})">
+              ${pos.otherPositions.length} other position${pos.otherPositions.length > 1 ? 's' : ''} ▼
+            </button>
+            <div class="other-pos-list" id="other-${idx}">
               ${pos.otherPositions.map(op => `
-                <div class="other-position-item">
-                  <span class="other-pos-coin">${op.coin}</span>
-                  <span class="other-pos-direction ${op.direction.toLowerCase()}">${op.direction}</span>
-                  <span class="other-pos-size">${formatUSD(op.positionUSD)}</span>
-                  <span class="other-pos-pnl ${op.unrealizedPnl >= 0 ? 'positive' : 'negative'}">
-                    ${op.unrealizedPnl >= 0 ? '+' : ''}${formatUSD(op.unrealizedPnl)}
-                  </span>
-                  <span style="color: var(--accent-purple); font-size: 0.65rem;">${op.leverage}x</span>
+                <div class="other-pos-item">
+                  <span>${op.coin} <span class="badge ${op.direction === 'LONG' ? 'badge-profitable' : 'badge-losing'}" style="font-size:0.5rem">${op.direction}</span></span>
+                  <span>${formatUSD(op.positionUSD)}</span>
+                  <span style="color:${op.unrealizedPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${op.unrealizedPnl >= 0 ? '+' : ''}${formatUSD(op.unrealizedPnl)}</span>
                 </div>
               `).join('')}
             </div>
@@ -1795,171 +934,126 @@
       `;
     }
 
-    // Modal functions
-    function openAddressModal() {
-      document.getElementById('addressModal').classList.add('active');
-      document.getElementById('newAddress').focus();
+    function toggleOther(idx) {
+      document.getElementById('other-' + idx)?.classList.toggle('show');
     }
 
-    function closeAddressModal() {
-      document.getElementById('addressModal').classList.remove('active');
-      document.getElementById('newAddress').value = '';
-    }
+    function renderPositions(data) {
+      const coinFilter = document.getElementById('coinFilter').value;
+      let longs = data.longs || [];
+      let shorts = data.shorts || [];
 
-    async function addAddress() {
-      const address = document.getElementById('newAddress').value.trim();
-      if (!address.startsWith('0x') || address.length !== 42) {
-        showToast('Invalid address format', 'warning');
-        return;
+      if (coinFilter) {
+        longs = longs.filter(p => p.coin === coinFilter);
+        shorts = shorts.filter(p => p.coin === coinFilter);
       }
 
-      try {
-        const response = await fetch('/api/add-address', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address })
-        });
-        
-        if (response.ok) {
-          showToast('Address added for tracking', 'info');
-          closeAddressModal();
-          refreshData();
-        } else {
-          showToast('Failed to add address', 'warning');
+      document.getElementById('longsTotal').textContent = formatUSD(data.longsAtRisk || 0);
+      document.getElementById('shortsTotal').textContent = formatUSD(data.shortsAtRisk || 0);
+      document.getElementById('longsCount').textContent = longs.length;
+      document.getElementById('shortsCount').textContent = shorts.length;
+
+      document.getElementById('longsList').innerHTML = longs.length
+        ? longs.map((p, i) => renderPositionCard(p, i)).join('')
+        : '<div class="empty-state">No longs at risk</div>';
+
+      document.getElementById('shortsList').innerHTML = shorts.length
+        ? shorts.map((p, i) => renderPositionCard(p, i + 1000)).join('')
+        : '<div class="empty-state">No shorts at risk</div>';
+
+      [...longs, ...shorts].forEach(pos => {
+        const key = `${pos.user}-${pos.coin}`;
+        if (!previousPositions.has(key) && pos.dangerLevel === 'CRITICAL') {
+          showToast(`🚨 New CRITICAL: ${pos.coin} ${pos.direction} @ ${pos.distancePercent}%`);
         }
-      } catch (error) {
-        showToast('Error adding address', 'warning');
-      }
-    }
-
-    // Toast notifications
-    function showToast(message, type = 'info') {
-      const container = document.getElementById('toastContainer');
-      const toast = document.createElement('div');
-      toast.className = `toast ${type}`;
-      toast.innerHTML = message;
-      container.appendChild(toast);
-
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(100%)';
-        setTimeout(() => toast.remove(), 300);
-      }, 5000);
-    }
-
-    // Refresh data
-    async function refreshData() {
-      const [posData, stats] = await Promise.all([
-        fetchPositions(),
-        fetchStats()
-      ]);
-
-      updateStats(stats);
-      renderPositions(posData);
-    }
-
-    // Event listeners
-    document.getElementById('minSizeFilter').addEventListener('change', refreshData);
-    document.getElementById('maxDistanceFilter').addEventListener('change', refreshData);
-    document.getElementById('dangerFilter').addEventListener('change', refreshData);
-    document.getElementById('coinFilter').addEventListener('change', () => {
-      // Re-render with current data
-      fetchPositions().then(data => renderPositions(data));
-    });
-
-    // Close modal on click outside
-    document.getElementById('addressModal').addEventListener('click', (e) => {
-      if (e.target.classList.contains('modal-overlay')) {
-        closeAddressModal();
-      }
-    });
-
-    // ESC to close modal
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeAddressModal();
-    });
-
-    // Enter to submit in modal
-    document.getElementById('newAddress').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addAddress();
-    });
-
-    // Initial load
-    refreshData();
-
-    // Auto-refresh every 30 seconds
-    setInterval(refreshData, 30000);
-
-    // Toggle other positions
-    function toggleOtherPositions(idx) {
-      const container = document.getElementById(`other-pos-${idx}`);
-      if (container) {
-        container.classList.toggle('expanded');
-        const btn = container.previousElementSibling;
-        if (btn) {
-          btn.innerHTML = container.classList.contains('expanded') 
-            ? btn.innerHTML.replace('▼', '▲')
-            : btn.innerHTML.replace('▲', '▼');
-        }
-      }
-    }
-
-    // ============================================
-    // LIQUIDATIONS
-    // ============================================
-    let currentLiqFilter = 'all';
-
-    async function fetchLiquidations() {
-      const minValue = currentLiqFilter === 'all' ? 0 : parseInt(currentLiqFilter);
-      try {
-        const response = await fetch(`/api/liquidations?minValue=${minValue}&limit=50`);
-        return await response.json();
-      } catch (error) {
-        console.error('Error fetching liquidations:', error);
-        return { liquidations: [], longValue: 0, shortValue: 0 };
-      }
-    }
-
-    function formatTimeAgo(timestamp) {
-      const seconds = Math.floor((Date.now() - timestamp) / 1000);
-      if (seconds < 60) return `${seconds}s ago`;
-      const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return `${minutes}m ago`;
-      const hours = Math.floor(minutes / 60);
-      return `${hours}h ago`;
+        previousPositions.set(key, pos);
+      });
     }
 
     function renderLiquidations(data) {
-      const list = document.getElementById('liqList');
-      
-      // Update stats
       document.getElementById('liqLongValue').textContent = formatUSD(data.longValue || 0);
       document.getElementById('liqShortValue').textContent = formatUSD(data.shortValue || 0);
-      
+
+      const list = document.getElementById('liqList');
       if (!data.liquidations || data.liquidations.length === 0) {
-        list.innerHTML = '<div class="liq-empty">💀 Waiting for liquidations...</div>';
+        list.innerHTML = '<div class="empty-state">Waiting for liquidations...</div>';
         return;
       }
-      
+
       list.innerHTML = data.liquidations.map(liq => `
         <div class="liq-item">
           <div class="liq-side ${liq.side.toLowerCase()}"></div>
           <div class="liq-info">
-            <div class="liq-coin">
-              ${liq.coin}
-              <span class="liq-direction ${liq.side.toLowerCase()}">${liq.side}</span>
-            </div>
-            <div class="liq-details">@ $${formatPrice(liq.price)}</div>
+            <div class="liq-coin">${liq.coin} <span class="liq-badge ${liq.side.toLowerCase()}">${liq.side}</span></div>
+            <div class="liq-price">@ $${formatPrice(liq.price)}</div>
           </div>
           <div class="liq-value">
             <div class="liq-amount">${formatUSD(liq.value)}</div>
-            <div class="liq-time">${formatTimeAgo(liq.timestamp)}</div>
+            <div class="liq-time">${timeAgo(liq.timestamp)} ago</div>
           </div>
         </div>
       `).join('');
     }
 
-    // Liq filter buttons
+    function renderWhaleLiquidations(data) {
+      const list = document.getElementById('whaleLiqList');
+      if (!data.liquidations || data.liquidations.length === 0) {
+        list.innerHTML = '<div class="empty-state">No whale liquidations yet</div>';
+        return;
+      }
+
+      list.innerHTML = data.liquidations.map(liq => `
+        <div class="liq-item">
+          <div class="liq-side ${liq.side.toLowerCase()}"></div>
+          <div class="liq-info">
+            <div class="liq-coin">${liq.coin} <span class="liq-badge ${liq.side.toLowerCase()}">${liq.side}</span></div>
+            <div class="liq-price">@ $${formatPrice(liq.price)}</div>
+          </div>
+          <div class="liq-value">
+            <div class="liq-amount">${formatUSD(liq.value)}</div>
+            <div class="liq-time">${timeAgo(liq.timestamp)} ago</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function refreshData() {
+      try {
+        const [positions, stats] = await Promise.all([fetchPositions(), fetchStats()]);
+        
+        document.getElementById('criticalCount').textContent = stats.criticalCount || 0;
+        document.getElementById('warningCount').textContent = stats.warningCount || 0;
+        document.getElementById('totalValue').textContent = formatUSD(stats.totalValueAtRisk || 0);
+        document.getElementById('totalPositions').textContent = positions.count || 0;
+
+        renderPositions(positions);
+
+        if (stats.byCoin) {
+          const coinSelect = document.getElementById('coinFilter');
+          const currentVal = coinSelect.value;
+          const coins = Object.keys(stats.byCoin).sort();
+          coinSelect.innerHTML = '<option value="">All</option>' + coins.map(c => `<option value="${c}">${c}</option>`).join('');
+          coinSelect.value = currentVal;
+        }
+      } catch (err) {
+        console.error('Refresh error:', err);
+      }
+    }
+
+    async function refreshLiquidations() {
+      try {
+        const [liqData, whaleData] = await Promise.all([fetchLiquidations(), fetchWhaleLiquidations()]);
+        renderLiquidations(liqData);
+        renderWhaleLiquidations(whaleData);
+      } catch (err) {
+        console.error('Liq refresh error:', err);
+      }
+    }
+
+    document.querySelectorAll('.filter-select').forEach(el => {
+      el.addEventListener('change', refreshData);
+    });
+
     document.querySelectorAll('.liq-filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.liq-filter-btn').forEach(b => b.classList.remove('active'));
@@ -1969,61 +1063,10 @@
       });
     });
 
-    async function refreshLiquidations() {
-      const data = await fetchLiquidations();
-      renderLiquidations(data);
-      
-      // Also fetch whale liquidations
-      const whaleData = await fetchWhaleLiquidations();
-      renderWhaleLiquidations(whaleData);
-    }
-
-    async function fetchWhaleLiquidations() {
-      try {
-        const response = await fetch('/api/whale-liquidations?limit=10');
-        return await response.json();
-      } catch (error) {
-        console.error('Error fetching whale liquidations:', error);
-        return { liquidations: [] };
-      }
-    }
-
-    function renderWhaleLiquidations(data) {
-      const list = document.getElementById('whaleLiqList');
-      
-      if (!data.liquidations || data.liquidations.length === 0) {
-        list.innerHTML = '<div class="liq-empty">🐋 No whale liquidations yet...</div>';
-        return;
-      }
-      
-      list.innerHTML = data.liquidations.map(liq => `
-        <div class="whale-liq-item">
-          <div class="liq-side ${liq.side.toLowerCase()}"></div>
-          <div class="liq-info">
-            <div class="liq-coin">
-              ${liq.coin}
-              <span class="liq-direction ${liq.side.toLowerCase()}">${liq.side}</span>
-            </div>
-            <div class="liq-details">@ $${formatPrice(liq.price)}</div>
-          </div>
-          <div class="liq-value">
-            <div class="liq-amount">${formatUSD(liq.value)}</div>
-            <div class="liq-time">${formatTimeAgo(liq.timestamp)}</div>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    // Update refreshData to include liquidations
-    async function refreshDataWithLiqs() {
-      await Promise.all([refreshData(), refreshLiquidations()]);
-    }
-
-    // Initial load with liquidations
+    refreshData();
     refreshLiquidations();
-    
-    // Auto-refresh liquidations every 3 seconds (daha hızlı)
-    setInterval(refreshLiquidations, 3000);
+    setInterval(refreshData, 30000);
+    setInterval(refreshLiquidations, 5000);
   </script>
 </body>
 </html>
