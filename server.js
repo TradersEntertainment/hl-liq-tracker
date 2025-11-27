@@ -12,6 +12,22 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ============================================
 // TELEGRAM BOT
 // ============================================
+// Top 10 coins - positions on other coins are "shitcoin bets"
+const TOP_COINS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK', 'NEAR'];
+
+function isShitcoin(coin) {
+  return !TOP_COINS.includes(coin.toUpperCase());
+}
+
+function formatPriceCompact(price) {
+  if (!price) return '?';
+  if (price >= 10000) return price.toFixed(0);
+  if (price >= 100) return price.toFixed(1);
+  if (price >= 1) return price.toFixed(2);
+  if (price >= 0.01) return price.toFixed(4);
+  return price.toFixed(6);
+}
+
 async function sendTelegramAlert(position) {
   if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) {
     return;
@@ -28,24 +44,51 @@ async function sendTelegramAlert(position) {
   const dirEmoji = position.direction === 'LONG' ? '🟢' : '🔴';
   const newBadge = position.isNewAddress ? '🆕 NEW WALLET\n' : '';
   
+  // Check if shitcoin with big size
+  const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
+  
+  // Potential HyperVault attack - shitcoin + $10M+ position
+  const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
+  
+  let alertHeader = '';
+  if (isPotentialVaultAttack) {
+    alertHeader = '🚨🚨🚨🚨🚨 *POTENTIAL HYPERVAULT ATTACK* 🚨🚨🚨🚨🚨\n⚠️⚠️⚠️ *MASSIVE SHITCOIN POSITION DETECTED* ⚠️⚠️⚠️\n\n';
+  } else if (isShitcoinBet) {
+    alertHeader = '🎰🎰🎰 *SHITCOIN WHALE BET* 🎰🎰🎰\n⚠️⚠️⚠️ *ALTCOIN DEGEN ALERT* ⚠️⚠️⚠️\n\n';
+  }
+  
+  // Format all-time PnL
+  let whaleStatus = '';
+  if (position.allTimePnl !== null && position.allTimePnl !== undefined) {
+    const pnlValue = position.allTimePnl;
+    const pnlFormatted = pnlValue >= 0 
+      ? '+$' + (Math.abs(pnlValue) / 1000000).toFixed(2) + 'M'
+      : '-$' + (Math.abs(pnlValue) / 1000000).toFixed(2) + 'M';
+    
+    if (position.isProfitableWhale) {
+      whaleStatus = `💰 *PROFITABLE WHALE* (${pnlFormatted} all-time)\n`;
+    } else {
+      whaleStatus = `🎰 *LOSING WHALE* (${pnlFormatted} all-time)\n`;
+    }
+  }
+  
   const message = `
-${emoji} *HIGH-RISK POSITION DETECTED* ${emoji}
+${alertHeader}${emoji} *HIGH-RISK POSITION DETECTED* ${emoji}
 
-${newBadge}${dirEmoji} *${position.coin} ${position.direction}*
+${whaleStatus}${newBadge}${dirEmoji} *${position.coin} ${position.direction}*
 💰 Size: *$${(position.positionUSD / 1000000).toFixed(2)}M*
 ⚡ Leverage: *${position.leverage}x*
 📍 Distance to Liq: *${position.distancePercent}%*
 
-📊 Entry: $${position.entryPrice.toFixed(2)}
-📈 Mark: $${position.markPrice.toFixed(2)}
-💀 Liq: $${position.liqPrice.toFixed(2)}
+📊 Entry: *$${formatPriceCompact(position.entryPrice)}*
+💀 Liq: *$${formatPriceCompact(position.liqPrice)}*
 
 💼 Wallet: $${position.walletBalance ? (position.walletBalance / 1000).toFixed(0) + 'K' : 'N/A'}
 📂 Total Positions: ${position.totalPositionCount || 1}
 
 🔗 [View on Hyperliquid](${position.hyperliquidUrl})
 
-#Hyperliquid #Liquidation #${position.coin} #Whale
+#Hyperliquid #Liquidation #${position.coin} #Whale${isShitcoinBet ? ' #Altcoin #Degen' : ''}${isPotentialVaultAttack ? ' #VaultAttack' : ''}
 `.trim();
 
   try {
@@ -57,7 +100,7 @@ ${newBadge}${dirEmoji} *${position.coin} ${position.direction}*
     });
     
     sentAlerts.set(alertKey, Date.now());
-    console.log(`📨 Telegram alert sent: ${position.coin} ${position.direction}`);
+    console.log(`📨 Telegram alert sent: ${position.coin} ${position.direction}${isPotentialVaultAttack ? ' [VAULT ATTACK?]' : isShitcoinBet ? ' [SHITCOIN]' : ''}`);
   } catch (error) {
     console.error('Telegram error:', error.response?.data?.description || error.message);
   }
@@ -80,18 +123,45 @@ async function sendTwitterAlert(position) {
   
   const emoji = position.dangerLevel === 'CRITICAL' ? '🚨' : '⚠️';
   const dirEmoji = position.direction === 'LONG' ? '🟢' : '🔴';
-  const newBadge = position.isNewAddress ? '🆕 NEW WALLET ' : '';
+  const newBadge = position.isNewAddress ? '🆕 ' : '';
+  
+  // Check if shitcoin bet
+  const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
+  
+  // Potential HyperVault attack - shitcoin + $10M+ position
+  const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
+  
+  let alertHeader = '';
+  if (isPotentialVaultAttack) {
+    alertHeader = '🚨🚨🚨 POTENTIAL HYPERVAULT ATTACK 🚨🚨🚨\n';
+  } else if (isShitcoinBet) {
+    alertHeader = '🎰🎰🎰 DEGEN ALTCOIN BET 🎰🎰🎰\n';
+  }
+  
+  // Format whale status for Twitter (shorter)
+  let whaleTag = '';
+  if (position.allTimePnl !== null && position.allTimePnl !== undefined) {
+    const pnlAbs = Math.abs(position.allTimePnl);
+    let pnlStr = pnlAbs >= 1000000 
+      ? '$' + (pnlAbs / 1000000).toFixed(1) + 'M'
+      : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
+    
+    if (position.isProfitableWhale) {
+      whaleTag = `💰 PROFITABLE (${pnlStr})\n`;
+    } else {
+      whaleTag = `🎰 LOSING (-${pnlStr})\n`;
+    }
+  }
   
   // Twitter has 280 char limit
-  const tweet = `${emoji} HIGH-RISK ${position.coin} ${position.direction} DETECTED
+  const tweet = `${alertHeader}${emoji} ${position.coin} ${position.direction} at RISK
 
-${newBadge}${dirEmoji} $${(position.positionUSD / 1000000).toFixed(1)}M @ ${position.leverage}x
-📍 ${position.distancePercent}% to liquidation
-💀 Liq: $${position.liqPrice.toFixed(0)}
+${whaleTag}${newBadge}${dirEmoji} $${(position.positionUSD / 1000000).toFixed(1)}M @ ${position.leverage}x
+📊 Entry: $${formatPriceCompact(position.entryPrice)} 💀 Liq: $${formatPriceCompact(position.liqPrice)}
 
 ${position.hyperliquidUrl}
 
-#Hyperliquid #${position.coin} #Crypto`.slice(0, 280);
+#Hyperliquid #${position.coin}${isPotentialVaultAttack ? ' #VaultAttack' : isShitcoinBet ? ' #Degen' : ''}`.slice(0, 280);
 
   try {
     // OAuth 1.0a signature
