@@ -745,9 +745,68 @@ app.get('/api/positions', (req, res) => {
   if (maxDistance) filtered = filtered.filter(p => parseFloat(p.distancePercent) <= parseFloat(maxDistance));
   if (dangerLevel) filtered = filtered.filter(p => p.dangerLevel === dangerLevel);
   if (coin) filtered = filtered.filter(p => p.coin === coin.toUpperCase());
+  
   const longs = filtered.filter(p => p.direction === 'LONG');
   const shorts = filtered.filter(p => p.direction === 'SHORT');
-  res.json({ count: filtered.length, longs, shorts, longsAtRisk: longs.reduce((sum, p) => sum + p.positionUSD, 0), shortsAtRisk: shorts.reduce((sum, p) => sum + p.positionUSD, 0) });
+  
+  // Calculate average liq prices by coin
+  const longsByCoin = {};
+  const shortsByCoin = {};
+  
+  for (const p of longs) {
+    if (!longsByCoin[p.coin]) {
+      longsByCoin[p.coin] = { positions: [], totalSize: 0, weightedLiqSum: 0, avgDistance: 0 };
+    }
+    longsByCoin[p.coin].positions.push(p);
+    longsByCoin[p.coin].totalSize += p.positionUSD;
+    longsByCoin[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
+  }
+  
+  for (const p of shorts) {
+    if (!shortsByCoin[p.coin]) {
+      shortsByCoin[p.coin] = { positions: [], totalSize: 0, weightedLiqSum: 0, avgDistance: 0 };
+    }
+    shortsByCoin[p.coin].positions.push(p);
+    shortsByCoin[p.coin].totalSize += p.positionUSD;
+    shortsByCoin[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
+  }
+  
+  // Calculate averages
+  const longCoinStats = {};
+  for (const [coin, data] of Object.entries(longsByCoin)) {
+    const avgLiqPrice = data.weightedLiqSum / data.totalSize;
+    const avgDistance = data.positions.reduce((s, p) => s + parseFloat(p.distancePercent), 0) / data.positions.length;
+    longCoinStats[coin] = {
+      count: data.positions.length,
+      totalSize: data.totalSize,
+      avgLiqPrice: avgLiqPrice,
+      avgDistance: avgDistance.toFixed(2),
+      markPrice: allMids[coin] || 0
+    };
+  }
+  
+  const shortCoinStats = {};
+  for (const [coin, data] of Object.entries(shortsByCoin)) {
+    const avgLiqPrice = data.weightedLiqSum / data.totalSize;
+    const avgDistance = data.positions.reduce((s, p) => s + parseFloat(p.distancePercent), 0) / data.positions.length;
+    shortCoinStats[coin] = {
+      count: data.positions.length,
+      totalSize: data.totalSize,
+      avgLiqPrice: avgLiqPrice,
+      avgDistance: avgDistance.toFixed(2),
+      markPrice: allMids[coin] || 0
+    };
+  }
+  
+  res.json({ 
+    count: filtered.length, 
+    longs, 
+    shorts, 
+    longsAtRisk: longs.reduce((sum, p) => sum + p.positionUSD, 0), 
+    shortsAtRisk: shorts.reduce((sum, p) => sum + p.positionUSD, 0),
+    longCoinStats,
+    shortCoinStats
+  });
 });
 
 app.get('/api/liquidations', (req, res) => {
@@ -858,11 +917,56 @@ app.get('/api/liquidatable', async (req, res) => {
     let longs = results.longs.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
     let shorts = results.shorts.filter(p => p.positionUSD >= parseFloat(minSize) && parseFloat(p.distancePercent) <= parseFloat(maxDistance));
     
+    // Calculate coin stats for filtered results
+    const longCoinStats = {};
+    const shortCoinStats = {};
+    
+    for (const p of longs) {
+      if (!longCoinStats[p.coin]) {
+        longCoinStats[p.coin] = { count: 0, totalSize: 0, weightedLiqSum: 0, distanceSum: 0 };
+      }
+      longCoinStats[p.coin].count++;
+      longCoinStats[p.coin].totalSize += p.positionUSD;
+      longCoinStats[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
+      longCoinStats[p.coin].distanceSum += parseFloat(p.distancePercent);
+      longCoinStats[p.coin].markPrice = p.markPrice;
+    }
+    
+    for (const p of shorts) {
+      if (!shortCoinStats[p.coin]) {
+        shortCoinStats[p.coin] = { count: 0, totalSize: 0, weightedLiqSum: 0, distanceSum: 0 };
+      }
+      shortCoinStats[p.coin].count++;
+      shortCoinStats[p.coin].totalSize += p.positionUSD;
+      shortCoinStats[p.coin].weightedLiqSum += p.liqPrice * p.positionUSD;
+      shortCoinStats[p.coin].distanceSum += parseFloat(p.distancePercent);
+      shortCoinStats[p.coin].markPrice = p.markPrice;
+    }
+    
+    // Finalize stats
+    for (const coin of Object.keys(longCoinStats)) {
+      const s = longCoinStats[coin];
+      s.avgLiqPrice = s.weightedLiqSum / s.totalSize;
+      s.avgDistance = (s.distanceSum / s.count).toFixed(2);
+      delete s.weightedLiqSum;
+      delete s.distanceSum;
+    }
+    
+    for (const coin of Object.keys(shortCoinStats)) {
+      const s = shortCoinStats[coin];
+      s.avgLiqPrice = s.weightedLiqSum / s.totalSize;
+      s.avgDistance = (s.distanceSum / s.count).toFixed(2);
+      delete s.weightedLiqSum;
+      delete s.distanceSum;
+    }
+    
     res.json({
       longs, shorts,
       longsCount: longs.length, shortsCount: shorts.length,
       longsValue: longs.reduce((s, p) => s + p.positionUSD, 0),
       shortsValue: shorts.reduce((s, p) => s + p.positionUSD, 0),
+      longCoinStats,
+      shortCoinStats,
       lastUpdate: liquidatableCache.lastUpdate
     });
   } catch (err) {

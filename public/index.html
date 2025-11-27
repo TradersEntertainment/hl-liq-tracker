@@ -877,6 +877,64 @@
     .liq-pos-address a:hover {
       text-decoration: underline;
     }
+
+    /* Coin Stats Badges */
+    .coin-stats-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.5rem;
+    }
+
+    .coin-stat-badge {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      min-width: 140px;
+    }
+
+    .coin-stat-badge.short {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .coin-stat-badge .coin-name {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--green);
+    }
+
+    .coin-stat-badge.short .coin-name {
+      color: var(--red);
+    }
+
+    .coin-stat-badge .coin-info {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+
+    .coin-stat-badge .coin-liq {
+      font-size: 0.7rem;
+      color: var(--yellow);
+    }
+
+    .coin-stat-badge .coin-liq strong {
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .coin-stat-badge .coin-distance {
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+    }
   </style>
 </head>
 <body>
@@ -1306,13 +1364,41 @@
       document.getElementById('longsCount').textContent = longs.length;
       document.getElementById('shortsCount').textContent = shorts.length;
 
-      document.getElementById('longsList').innerHTML = longs.length
-        ? longs.map((p, i) => renderPositionCard(p, i)).join('')
-        : '<div class="empty-state">No longs at risk</div>';
+      // Render coin stats header for longs
+      let longsHtml = '';
+      if (data.longCoinStats && Object.keys(data.longCoinStats).length > 0) {
+        longsHtml += '<div class="coin-stats-container">';
+        for (const [coin, stats] of Object.entries(data.longCoinStats)) {
+          longsHtml += `
+            <div class="coin-stat-badge">
+              <span class="coin-name">${coin}</span>
+              <span class="coin-info">${stats.count} pos · Avg Liq: $${formatPrice(stats.avgLiqPrice)}</span>
+              <span class="coin-distance">${stats.avgDistance}% avg</span>
+            </div>
+          `;
+        }
+        longsHtml += '</div>';
+      }
+      longsHtml += longs.length ? longs.map((p, i) => renderPositionCard(p, i)).join('') : '<div class="empty-state">No longs at risk</div>';
+      document.getElementById('longsList').innerHTML = longsHtml;
 
-      document.getElementById('shortsList').innerHTML = shorts.length
-        ? shorts.map((p, i) => renderPositionCard(p, i + 1000)).join('')
-        : '<div class="empty-state">No shorts at risk</div>';
+      // Render coin stats header for shorts
+      let shortsHtml = '';
+      if (data.shortCoinStats && Object.keys(data.shortCoinStats).length > 0) {
+        shortsHtml += '<div class="coin-stats-container">';
+        for (const [coin, stats] of Object.entries(data.shortCoinStats)) {
+          shortsHtml += `
+            <div class="coin-stat-badge short">
+              <span class="coin-name">${coin}</span>
+              <span class="coin-info">${stats.count} pos · Avg Liq: $${formatPrice(stats.avgLiqPrice)}</span>
+              <span class="coin-distance">${stats.avgDistance}% avg</span>
+            </div>
+          `;
+        }
+        shortsHtml += '</div>';
+      }
+      shortsHtml += shorts.length ? shorts.map((p, i) => renderPositionCard(p, i + 1000)).join('') : '<div class="empty-state">No shorts at risk</div>';
+      document.getElementById('shortsList').innerHTML = shortsHtml;
 
       [...longs, ...shorts].forEach(pos => {
         const key = `${pos.user}-${pos.coin}`;
@@ -1438,21 +1524,57 @@
           document.getElementById('liqUpdateTime').textContent = new Date(data.lastUpdate).toLocaleTimeString();
         }
         
-        // Render longs
+        // Render longs with coin stats
         const longsContainer = document.getElementById('liqLongsList');
-        if (data.longs && data.longs.length > 0) {
-          longsContainer.innerHTML = data.longs.map(pos => renderLiqPosCard(pos)).join('');
-        } else {
-          longsContainer.innerHTML = '<div class="empty-state">No longs near liquidation</div>';
+        let longsHtml = '';
+        
+        if (data.longCoinStats && Object.keys(data.longCoinStats).length > 0) {
+          longsHtml += '<div class="coin-stats-container">';
+          for (const [coin, stats] of Object.entries(data.longCoinStats)) {
+            longsHtml += `
+              <div class="coin-stat-badge">
+                <span class="coin-name">${coin}</span>
+                <span class="coin-info">${stats.count} pos · $${formatUSD(stats.totalSize)}</span>
+                <span class="coin-liq">💥 Avg Liq: <strong>$${formatPrice(stats.avgLiqPrice)}</strong></span>
+                <span class="coin-distance">${stats.avgDistance}% away</span>
+              </div>
+            `;
+          }
+          longsHtml += '</div>';
         }
         
-        // Render shorts
-        const shortsContainer = document.getElementById('liqShortsList');
-        if (data.shorts && data.shorts.length > 0) {
-          shortsContainer.innerHTML = data.shorts.map(pos => renderLiqPosCard(pos)).join('');
+        if (data.longs && data.longs.length > 0) {
+          longsHtml += data.longs.map(pos => renderLiqPosCard(pos)).join('');
         } else {
-          shortsContainer.innerHTML = '<div class="empty-state">No shorts near liquidation</div>';
+          longsHtml += '<div class="empty-state">No longs near liquidation</div>';
         }
+        longsContainer.innerHTML = longsHtml;
+        
+        // Render shorts with coin stats
+        const shortsContainer = document.getElementById('liqShortsList');
+        let shortsHtml = '';
+        
+        if (data.shortCoinStats && Object.keys(data.shortCoinStats).length > 0) {
+          shortsHtml += '<div class="coin-stats-container">';
+          for (const [coin, stats] of Object.entries(data.shortCoinStats)) {
+            shortsHtml += `
+              <div class="coin-stat-badge short">
+                <span class="coin-name">${coin}</span>
+                <span class="coin-info">${stats.count} pos · $${formatUSD(stats.totalSize)}</span>
+                <span class="coin-liq">💥 Avg Liq: <strong>$${formatPrice(stats.avgLiqPrice)}</strong></span>
+                <span class="coin-distance">${stats.avgDistance}% away</span>
+              </div>
+            `;
+          }
+          shortsHtml += '</div>';
+        }
+        
+        if (data.shorts && data.shorts.length > 0) {
+          shortsHtml += data.shorts.map(pos => renderLiqPosCard(pos)).join('');
+        } else {
+          shortsHtml += '<div class="empty-state">No shorts near liquidation</div>';
+        }
+        shortsContainer.innerHTML = shortsHtml;
         
       } catch (err) {
         console.error('Liquidatable fetch error:', err);
