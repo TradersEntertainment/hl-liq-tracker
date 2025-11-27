@@ -109,8 +109,23 @@ ${whaleStatus}${newBadge}${dirEmoji} *${position.coin} ${position.direction}*
 // ============================================
 // TWITTER/X API
 // ============================================
+const crypto = require('crypto');
+let oauthLib = null;
+try {
+  oauthLib = require('oauth-1.0a');
+} catch (e) {
+  console.log('⚠️ oauth-1.0a not installed - Twitter alerts disabled');
+}
+
 async function sendTwitterAlert(position) {
-  if (!CONFIG.TWITTER_API_KEY || !CONFIG.TWITTER_ACCESS_TOKEN) {
+  // Check if Twitter is configured
+  if (!CONFIG.TWITTER_API_KEY || !CONFIG.TWITTER_API_SECRET || 
+      !CONFIG.TWITTER_ACCESS_TOKEN || !CONFIG.TWITTER_ACCESS_SECRET) {
+    return;
+  }
+  
+  if (!oauthLib) {
+    console.log('⚠️ Twitter: oauth-1.0a library not available');
     return;
   }
   
@@ -164,11 +179,7 @@ ${position.hyperliquidUrl}
 #Hyperliquid #${position.coin}${isPotentialVaultAttack ? ' #VaultAttack' : isShitcoinBet ? ' #Degen' : ''}`.slice(0, 280);
 
   try {
-    // OAuth 1.0a signature
-    const crypto = require('crypto');
-    const oauth = require('oauth-1.0a');
-    
-    const oauthClient = oauth({
+    const oauth = oauthLib({
       consumer: {
         key: CONFIG.TWITTER_API_KEY,
         secret: CONFIG.TWITTER_API_SECRET
@@ -185,19 +196,41 @@ ${position.hyperliquidUrl}
     };
     
     const url = 'https://api.twitter.com/2/tweets';
-    const authHeader = oauthClient.toHeader(oauthClient.authorize({ url, method: 'POST' }, token));
+    const requestData = { url, method: 'POST' };
+    const authHeader = oauth.toHeader(oauth.authorize(requestData, token));
     
-    await axios.post(url, { text: tweet }, {
+    console.log(`🐦 Sending tweet for ${position.coin}...`);
+    
+    const response = await axios.post(url, { text: tweet }, {
       headers: {
-        ...authHeader,
-        'Content-Type': 'application/json'
+        'Authorization': authHeader['Authorization'],
+        'Content-Type': 'application/json',
+        'User-Agent': 'HL-Liquidation-Hunter/1.0'
       }
     });
     
     sentAlerts.set(alertKey, Date.now());
-    console.log(`🐦 Twitter alert sent: ${position.coin} ${position.direction}`);
+    console.log(`✅ Twitter alert sent: ${position.coin} ${position.direction} - Tweet ID: ${response.data?.data?.id || 'unknown'}`);
   } catch (error) {
-    console.error('Twitter error:', error.response?.data || error.message);
+    // Detailed error logging
+    if (error.response) {
+      console.error('❌ Twitter API Error:');
+      console.error('   Status:', error.response.status);
+      console.error('   Data:', JSON.stringify(error.response.data, null, 2));
+      
+      // Common errors
+      if (error.response.status === 401) {
+        console.error('   → Check your API keys and tokens are correct');
+        console.error('   → Make sure app has Read and Write permissions');
+      } else if (error.response.status === 403) {
+        console.error('   → Your app may not have tweet posting permissions');
+        console.error('   → Check Twitter Developer Portal settings');
+      } else if (error.response.status === 429) {
+        console.error('   → Rate limited - too many tweets');
+      }
+    } else {
+      console.error('❌ Twitter Error:', error.message);
+    }
   }
 }
 
@@ -1141,9 +1174,93 @@ app.get('/api/stats', (req, res) => {
       dangerThreshold5: CONFIG.DANGER_THRESHOLD_5,
       dangerThreshold10: CONFIG.DANGER_THRESHOLD_10,
     },
+    telegramConfigured: !!(CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_CHANNEL_ID),
+    twitterConfigured: !!(CONFIG.TWITTER_API_KEY && CONFIG.TWITTER_ACCESS_TOKEN),
     coinglassEnabled: !!CONFIG.COINGLASS_API_KEY,
     lastUpdate: Date.now()
   });
+});
+
+// Test Twitter endpoint
+app.post('/api/test-twitter', async (req, res) => {
+  if (!CONFIG.TWITTER_API_KEY || !CONFIG.TWITTER_ACCESS_TOKEN) {
+    return res.status(400).json({ error: 'Twitter not configured', configured: false });
+  }
+  
+  const testPosition = {
+    user: '0x0000000000000000000000000000000000000000',
+    userShort: '0x0000...0000',
+    coin: 'TEST',
+    direction: 'LONG',
+    positionUSD: 5000000,
+    leverage: 25,
+    distancePercent: '3.50',
+    entryPrice: 100,
+    liqPrice: 95,
+    markPrice: 98,
+    dangerLevel: 'CRITICAL',
+    isNewAddress: false,
+    allTimePnl: 1500000,
+    isProfitableWhale: true,
+    hyperliquidUrl: 'https://app.hyperliquid.xyz'
+  };
+  
+  try {
+    // Remove cooldown check for test
+    const alertKey = `twitter-${testPosition.user}-${testPosition.coin}`;
+    sentAlerts.delete(alertKey);
+    
+    await sendTwitterAlert(testPosition);
+    res.json({ success: true, message: 'Test tweet sent - check your Twitter account' });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: error.response?.data 
+    });
+  }
+});
+
+// Test Telegram endpoint
+app.post('/api/test-telegram', async (req, res) => {
+  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) {
+    return res.status(400).json({ error: 'Telegram not configured', configured: false });
+  }
+  
+  const testPosition = {
+    user: '0x0000000000000000000000000000000000000000',
+    userShort: '0x0000...0000',
+    coin: 'TEST',
+    direction: 'LONG',
+    positionUSD: 5000000,
+    leverage: 25,
+    distancePercent: '3.50',
+    entryPrice: 100,
+    liqPrice: 95,
+    markPrice: 98,
+    dangerLevel: 'CRITICAL',
+    isNewAddress: true,
+    allTimePnl: 1500000,
+    isProfitableWhale: true,
+    walletBalance: 250000,
+    totalPositionCount: 3,
+    hyperliquidUrl: 'https://app.hyperliquid.xyz'
+  };
+  
+  try {
+    // Remove cooldown check for test
+    const alertKey = `${testPosition.user}-${testPosition.coin}`;
+    sentAlerts.delete(alertKey);
+    
+    await sendTelegramAlert(testPosition);
+    res.json({ success: true, message: 'Test message sent - check your Telegram channel' });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: error.response?.data 
+    });
+  }
 });
 
 app.post('/api/add-address', (req, res) => {
