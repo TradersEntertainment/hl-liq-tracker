@@ -626,16 +626,25 @@
       margin-left: 0.5rem;
     }
 
+<<<<<<< HEAD
     /* Main layout - three columns */
     .main-content {
       display: grid;
       grid-template-columns: 1fr 1fr 320px;
       gap: 1rem;
       align-items: start;
+=======
+    /* Main layout - two columns */
+    .main-content {
+      display: grid;
+      grid-template-columns: 1fr 350px;
+      gap: 1.5rem;
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
     }
 
     @media (max-width: 1400px) {
       .main-content {
+<<<<<<< HEAD
         grid-template-columns: 1fr 1fr;
       }
       .liq-panel {
@@ -650,6 +659,23 @@
       .liq-panel {
         grid-column: span 1;
       }
+=======
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Positions split layout */
+    .positions-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 1200px) {
+      .positions-split {
+        grid-template-columns: 1fr;
+      }
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
     }
 
     .position-column {
@@ -720,7 +746,12 @@
     }
 
     .position-list {
+<<<<<<< HEAD
       /* No scroll - natural height */
+=======
+      max-height: 600px;
+      overflow-y: auto;
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
     }
 
     .position-card {
@@ -831,9 +862,16 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
+<<<<<<< HEAD
       position: sticky;
       top: 80px;
       align-self: start;
+=======
+      height: fit-content;
+      max-height: calc(100vh - 200px);
+      position: sticky;
+      top: 100px;
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
     }
 
     .liq-header {
@@ -926,17 +964,34 @@
     }
 
     .liq-list {
+<<<<<<< HEAD
       max-height: 400px;
+=======
+      max-height: 500px;
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
       overflow-y: auto;
     }
 
     .liq-item {
       display: flex;
       align-items: center;
+<<<<<<< HEAD
       padding: 0.5rem 0.75rem;
       border-bottom: 1px solid var(--border);
       gap: 0.5rem;
       /* NO animation - prevents list jumping */
+=======
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      gap: 0.75rem;
+      transition: background 0.2s;
+      animation: slideInLiq 0.3s ease;
+    }
+
+    @keyframes slideInLiq {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
     }
 
     .liq-item:hover {
@@ -1378,6 +1433,7 @@
 
     <!-- Main Content: Positions + Liquidations -->
     <div class="main-content">
+<<<<<<< HEAD
       <!-- LONGS Column -->
       <div class="position-column longs">
         <div class="column-header">
@@ -1419,6 +1475,52 @@
         </div>
         <div class="position-list" id="shortsList">
           <div class="empty-column">No shorts at risk</div>
+=======
+      <!-- Positions Split: Longs | Shorts -->
+      <div class="positions-split">
+        <!-- LONGS Column -->
+        <div class="position-column longs">
+          <div class="column-header">
+            <div class="column-title longs">
+              🟢 LONGS AT RISK
+            </div>
+            <div class="column-stats">
+              <div class="column-stat">
+                <span class="label">Total:</span>
+                <span class="value green" id="longsAtRisk">$0</span>
+              </div>
+              <div class="column-stat">
+                <span class="label">Count:</span>
+                <span class="value" id="longsCount">0</span>
+              </div>
+            </div>
+          </div>
+          <div class="position-list" id="longsList">
+            <div class="empty-column">No longs at risk</div>
+          </div>
+        </div>
+
+        <!-- SHORTS Column -->
+        <div class="position-column shorts">
+          <div class="column-header">
+            <div class="column-title shorts">
+              🔴 SHORTS AT RISK
+            </div>
+            <div class="column-stats">
+              <div class="column-stat">
+                <span class="label">Total:</span>
+                <span class="value red" id="shortsAtRisk">$0</span>
+              </div>
+              <div class="column-stat">
+                <span class="label">Count:</span>
+                <span class="value" id="shortsCount">0</span>
+              </div>
+            </div>
+          </div>
+          <div class="position-list" id="shortsList">
+            <div class="empty-column">No shorts at risk</div>
+          </div>
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
         </div>
       </div>
 
@@ -1442,9 +1544,15 @@
         </div>
         <div class="liq-filters">
           <button class="liq-filter-btn active" data-filter="all">All</button>
+<<<<<<< HEAD
           <button class="liq-filter-btn" data-filter="50000">$50K+</button>
           <button class="liq-filter-btn" data-filter="100000">$100K+</button>
           <button class="liq-filter-btn" data-filter="250000">$250K+</button>
+=======
+          <button class="liq-filter-btn" data-filter="10000">$10K+</button>
+          <button class="liq-filter-btn" data-filter="50000">$50K+</button>
+          <button class="liq-filter-btn" data-filter="100000">$100K+</button>
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
         </div>
         <div class="liq-list" id="liqList">
           <div class="liq-empty">Waiting for liquidations...</div>

@@ -482,6 +482,18 @@ function connectWebSocket() {
       
       // TRADE MONITORING - Ana özellik!
       if (msg.channel === 'trades' && msg.data) {
+<<<<<<< HEAD
+=======
+        // Debug: İlk birkaç trade'i logla
+        if (msg.data.length > 0) {
+          const firstTrade = msg.data[0];
+          const value = parseFloat(firstTrade.sz || 0) * parseFloat(firstTrade.px || 0);
+          if (value >= 50000) {
+            console.log(`📈 Trade: ${firstTrade.coin} | $${(value/1000).toFixed(0)}k | crossed: ${firstTrade.crossed}`);
+          }
+        }
+        
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
         processTrades(msg.data);
         
         // Check for liquidation trades
@@ -589,6 +601,7 @@ function processLiquidations(trades) {
       
       const tradeValue = Math.abs(sz) * px;
       
+<<<<<<< HEAD
       // SADECE crossed=true olan işlemler likidasyon olabilir
       // crossed = taker order (market order) - likidasyonlar HER ZAMAN market order
       // Normal limit order'lar crossed=false olur
@@ -600,12 +613,30 @@ function processLiquidations(trades) {
         const liq = {
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           coin: trade.coin,
+=======
+      // Hyperliquid'de crossed=true olan işlemler market order (taker)
+      // Likidasyonlar her zaman market order ile yapılır
+      // NOT: Bazen crossed field gelmeyebilir, büyük ani işlemleri de dahil edelim
+      const isCrossed = trade.crossed === true;
+      
+      // $5k+ crossed trade = potansiyel likidasyon (daha düşük threshold)
+      // VEYA $50k+ herhangi bir trade (büyük market order = muhtemel liq)
+      const isLiquidation = (isCrossed && tradeValue >= 5000) || tradeValue >= 50000;
+      
+      if (isLiquidation) {
+        const liq = {
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          coin: trade.coin,
+          // Buyer (B) aldıysa, bir short likidasyona uğradı
+          // Seller (A) sattıysa, bir long likidasyona uğradı
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
           side: trade.side === 'B' ? 'SHORT' : 'LONG',
           price: px,
           size: Math.abs(sz),
           value: tradeValue,
           timestamp: trade.time || Date.now(),
           hash: trade.hash || null,
+<<<<<<< HEAD
         };
         
         // Duplicate kontrolü (son 3 saniye içinde aynı coin + benzer value)
@@ -616,6 +647,20 @@ function processLiquidations(trades) {
         );
         
         if (!isDuplicate) {
+=======
+          crossed: isCrossed
+        };
+        
+        // Duplicate kontrolü (son 2 saniye içinde aynı coin/value)
+        const isDuplicate = recentLiquidations.some(l => 
+          l.coin === liq.coin && 
+          Math.abs(l.value - liq.value) < 100 && 
+          Math.abs(l.timestamp - liq.timestamp) < 2000
+        );
+        
+        if (!isDuplicate) {
+          // Add to all liquidations
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
           recentLiquidations.unshift(liq);
           if (recentLiquidations.length > MAX_LIQUIDATIONS) {
             recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
@@ -628,7 +673,11 @@ function processLiquidations(trades) {
               recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
             }
             console.log(`🐋💀 WHALE LIQ: ${liq.coin} ${liq.side} | $${(tradeValue/1000000).toFixed(2)}M @ $${px.toFixed(2)}`);
+<<<<<<< HEAD
           } else if (tradeValue >= 100000) {
+=======
+          } else if (tradeValue >= 50000) {
+>>>>>>> 99e8202b548d16c039de71c8bb695510157d27f6
             console.log(`💀 LIQ: ${liq.coin} ${liq.side} | $${(tradeValue/1000).toFixed(0)}k @ $${px.toFixed(2)}`);
           }
         }
