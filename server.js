@@ -48,7 +48,10 @@ async function initDatabase() {
     const { Pool } = require('pg');
     pool = new Pool({
       connectionString: CONFIG.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: { rejectUnauthorized: false },
+      max: 5,                       // <--- EKLENEN: Maksimum bağlantı sayısı (RAM tasarrufu)
+      idleTimeoutMillis: 30000,     // <--- EKLENEN: Boşta kalan bağlantıyı 30sn sonra kapat
+      connectionTimeoutMillis: 2000 // <--- EKLENEN: Bağlanamazsa 2sn içinde iptal et
     });
     
     await pool.query('SELECT NOW()');
