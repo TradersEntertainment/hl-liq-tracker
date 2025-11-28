@@ -180,83 +180,30 @@ try { oauthLib = require('oauth-1.0a'); } catch (e) { console.log('⚠️ oauth-
 
 async function sendTelegramAlert(position) {
   if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) return;
-  
+
   const alertKey = position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
   if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
-  
+
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
-  const ageDays = position.walletAgeDays;
-  const isBrandNew = ageDays !== null && ageDays === 0;
-  const isNewWallet = ageDays !== null && ageDays < 7;
-  const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
-  const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
-  
-  // Build message parts
-  let lines = [];
-  
-  // Header based on situation
-  if (isPotentialVaultAttack) {
-    lines.push('🚨🚨🚨 *HYPERVAULT ATTACK ALERT* 🚨🚨🚨');
-    lines.push('');
-  } else if (isShitcoinBet) {
-    lines.push('🎰 *DEGEN WHALE SPOTTED* 🎰');
-    lines.push('');
-  } else if (isBrandNew) {
-    lines.push('👶🔥 *FRESH WALLET ALERT* 🔥👶');
-    lines.push('⚠️ _Possible insider or exploit activity_');
-    lines.push('');
-  }
-  
-  // Main position info with visual box
-  const dirIcon = isLong ? '🟢' : '🔴';
   const dangerIcon = isCritical ? '💀' : '⚠️';
-  
-  lines.push(dangerIcon + ' *' + position.coin + ' ' + position.direction + '* ' + dangerIcon);
-  lines.push('━━━━━━━━━━━━━━━━');
-  
-  // Whale history status
-  if (position.allTimePnl !== null) {
-    const pnlValue = position.allTimePnl;
-    const pnlAbs = Math.abs(pnlValue);
-    let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(2) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
-    
-    if (position.isProfitableWhale) {
-      lines.push('👑 *HISTORICALLY WINNER WHALE*');
-      lines.push('📈 All-Time: *+' + pnlStr + '*');
-    } else {
-      lines.push('🎲 *HISTORICALLY LOSER WHALE*');
-      lines.push('📉 All-Time: *-' + pnlStr + '*');
-    }
-    lines.push('');
-  }
-  
-  // Position details
-  lines.push('💎 Size: *$' + (position.positionUSD / 1000000).toFixed(2) + 'M*');
-  lines.push('⚡ Leverage: *' + position.leverage + 'x*');
-  lines.push('🎯 Distance to Liq: *' + position.distancePercent + '%*');
-  lines.push('');
-  
-  // Price info
-  lines.push('📊 Entry: `$' + formatPriceCompact(position.entryPrice) + '`');
-  lines.push('💀 Liquidation: `$' + formatPriceCompact(position.liqPrice) + '`');
-  lines.push('');
-  
-  // Wallet age
-  if (isBrandNew) {
-    lines.push('🆕 Wallet Age: *BRAND NEW* (<1 day)');
-  } else if (isNewWallet) {
-    lines.push('👶 Wallet Age: *' + ageDays + ' days*');
-  } else if (ageDays !== null) {
-    lines.push('🕐 Wallet Age: ' + formatWalletAge(ageDays));
-  }
-  
-  lines.push('');
-  lines.push('🔗 [View Position on Hypurrscan](' + position.hypurrscanUrl + ')');
-  lines.push('');
-  lines.push('#Hyperliquid #' + position.coin + ' #WhaleAlert');
-  
+  const dirIcon = isLong ? '🟢' : '🔴';
+
+  // Simple message format
+  const lines = [
+    dangerIcon + ' ' + position.coin + ' ' + position.direction,
+    '',
+    dirIcon + ' $' + (position.positionUSD / 1000000).toFixed(1) + 'M @ ' + position.leverage + 'x',
+    '📊 Entry: $' + formatPriceCompact(position.entryPrice),
+    '💀 Liq: $' + formatPriceCompact(position.liqPrice),
+    '🎯 ' + position.distancePercent + '% away',
+    '',
+    position.hypurrscanUrl,
+    '',
+    '#Hyperliquid #' + position.coin
+  ];
+
   const message = lines.join('\n');
 
   try {
@@ -264,10 +211,10 @@ async function sendTelegramAlert(position) {
       chat_id: CONFIG.TELEGRAM_CHANNEL_ID,
       text: message,
       parse_mode: 'Markdown',
-      disable_web_page_preview: true
+      disable_web_page_preview: false
     });
     sentAlerts.set(alertKey, Date.now());
-    console.log('📨 Telegram: ' + position.coin + ' | Age: ' + formatWalletAge(ageDays));
+    console.log('📨 Telegram: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD / 1000000).toFixed(1) + 'M');
   } catch (error) {
     console.error('Telegram error:', error.response?.data?.description || error.message);
   }
@@ -275,56 +222,30 @@ async function sendTelegramAlert(position) {
 
 async function sendTwitterAlert(position) {
   if (!CONFIG.TWITTER_API_KEY || !CONFIG.TWITTER_ACCESS_TOKEN || !oauthLib) return;
-  
+
   const alertKey = 'twitter-' + position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
   if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
-  
+
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
-  const ageDays = position.walletAgeDays;
-  const isBrandNew = ageDays !== null && ageDays === 0;
-  const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
-  const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
-  
-  let lines = [];
-  
-  // Header
-  if (isPotentialVaultAttack) {
-    lines.push('🚨 VAULT ATTACK ALERT 🚨');
-  } else if (isShitcoinBet) {
-    lines.push('🎰 DEGEN WHALE 🎰');
-  } else if (isBrandNew) {
-    lines.push('👶🔥 FRESH WALLET');
-  }
-  
-  // Main info
   const dangerIcon = isCritical ? '💀' : '⚠️';
   const dirIcon = isLong ? '🟢' : '🔴';
-  lines.push(dangerIcon + ' ' + position.coin + ' ' + position.direction);
-  lines.push('');
-  
-  // Whale status
-  if (position.allTimePnl !== null) {
-    const pnlAbs = Math.abs(position.allTimePnl);
-    let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(1) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
-    if (position.isProfitableWhale) {
-      lines.push('👑 Winner Whale (+' + pnlStr + ')');
-    } else {
-      lines.push('🎲 Loser Whale (-' + pnlStr + ')');
-    }
-  }
-  
-  // Position details
-  lines.push(dirIcon + ' $' + (position.positionUSD / 1000000).toFixed(1) + 'M @ ' + position.leverage + 'x');
-  lines.push('📊 Entry: $' + formatPriceCompact(position.entryPrice));
-  lines.push('💀 Liq: $' + formatPriceCompact(position.liqPrice));
-  lines.push('🎯 ' + position.distancePercent + '% away');
-  lines.push('');
-  lines.push(position.hypurrscanUrl);
-  lines.push('');
-  lines.push('#Hyperliquid #' + position.coin);
-  
+
+  // Simple message format
+  const lines = [
+    dangerIcon + ' ' + position.coin + ' ' + position.direction,
+    '',
+    dirIcon + ' $' + (position.positionUSD / 1000000).toFixed(1) + 'M @ ' + position.leverage + 'x',
+    '📊 Entry: $' + formatPriceCompact(position.entryPrice),
+    '💀 Liq: $' + formatPriceCompact(position.liqPrice),
+    '🎯 ' + position.distancePercent + '% away',
+    '',
+    position.hypurrscanUrl,
+    '',
+    '#Hyperliquid #' + position.coin
+  ];
+
   const tweet = lines.join('\n').slice(0, 280);
 
   try {
@@ -336,10 +257,10 @@ async function sendTwitterAlert(position) {
     const token = { key: CONFIG.TWITTER_ACCESS_TOKEN, secret: CONFIG.TWITTER_ACCESS_SECRET };
     const url = 'https://api.twitter.com/2/tweets';
     const authHeader = oauth.toHeader(oauth.authorize({ url, method: 'POST' }, token));
-    
+
     await axios.post(url, { text: tweet }, { headers: { 'Authorization': authHeader['Authorization'], 'Content-Type': 'application/json' } });
     sentAlerts.set(alertKey, Date.now());
-    console.log('🐦 Twitter: ' + position.coin);
+    console.log('🐦 Twitter: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD / 1000000).toFixed(1) + 'M');
   } catch (error) {
     console.error('Twitter error:', error.response?.status, error.response?.data?.detail || error.message);
   }
