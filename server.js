@@ -28,9 +28,8 @@ const CONFIG = {
   TWITTER_API_SECRET: process.env.TWITTER_API_SECRET,
   TWITTER_ACCESS_TOKEN: process.env.TWITTER_ACCESS_TOKEN,
   TWITTER_ACCESS_SECRET: process.env.TWITTER_ACCESS_SECRET,
-  ALERT_COOLDOWN: 30 * 60 * 1000, // 30 minutes cooldown per position
+  ALERT_COOLDOWN: 5 * 60 * 1000,
   DATABASE_URL: process.env.DATABASE_URL,
-  DEBUG_MODE: process.env.DEBUG_MODE === 'true',
 };
 
 // ============================================
@@ -48,10 +47,7 @@ async function initDatabase() {
     const { Pool } = require('pg');
     pool = new Pool({
       connectionString: CONFIG.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 5,                       // <--- EKLENEN: Maksimum bağlantı sayısı (RAM tasarrufu)
-      idleTimeoutMillis: 30000,     // <--- EKLENEN: Boşta kalan bağlantıyı 30sn sonra kapat
-      connectionTimeoutMillis: 2000 // <--- EKLENEN: Bağlanamazsa 2sn içinde iptal et
+      ssl: { rejectUnauthorized: false }
     });
     
     await pool.query('SELECT NOW()');
@@ -350,60 +346,16 @@ async function sendTwitterAlert(position) {
 }
 
 async function sendAlerts(position) {
-  // Only alert for $2M+ positions within 10% of liquidation
-  if (position.positionUSD < CONFIG.MIN_POSITION_USD) {
-    return;
-  }
-  
-  const distancePercent = parseFloat(position.distancePercent);
-  if (distancePercent > 10) {
-    return;
-  }
-  
-  // If we reach here: $2M+ AND within 10% of liq = ALWAYS ALERT
-  
-  // Check for potential HyperVault attack (shitcoin + large position)
-  const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 2000000;
-  const isLargeShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 5000000;
-  const isMassiveVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
-  const isBrandNew = position.walletAgeDays !== null && position.walletAgeDays === 0;
-  
-  // Log with appropriate urgency
-  if (isMassiveVaultAttack) {
-    console.log('🚨🚨🚨 VAULT ATTACK ALERT: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M');
-  } else if (isLargeShitcoinBet) {
-    console.log('🎰 DEGEN WHALE: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M');
-  } else if (isPotentialVaultAttack) {
-    console.log('⚠️ SHITCOIN WHALE: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M');
-  } else {
-    console.log('🔔 SENDING ALERT: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M | ' + position.dangerLevel);
-  }
-  
-  // Send Telegram first (more reliable), then Twitter with delay
-  await sendTelegramAlert(position);
-  
-  // Delay Twitter to avoid rate limits
-  setTimeout(() => sendTwitterAlert(position), 5000);
+  if (position.dangerLevel !== 'CRITICAL' && (position.walletAgeDays === null || position.walletAgeDays > 7)) return;
+  await Promise.all([sendTelegramAlert(position), sendTwitterAlert(position)]);
 }
 
 // ============================================
 // HYPERLIQUID API
 // ============================================
-async function hlPost(body, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await axios.post(CONFIG.HYPERLIQUID_API, body, { timeout: 10000 });
-      return response.data;
-    } catch (error) {
-      if (i === retries - 1) {
-        if (CONFIG.DEBUG_MODE) console.error('❌ hlPost failed after ' + retries + ' retries:', body.type, error.message);
-        return null;
-      }
-      // Wait before retry (exponential backoff)
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-    }
-  }
-  return null;
+async function hlPost(body) {
+  try { return (await axios.post(CONFIG.HYPERLIQUID_API, body)).data; }
+  catch (error) { return null; }
 }
 
 async function getAssetMeta() {
@@ -411,32 +363,7 @@ async function getAssetMeta() {
   return data?.universe?.map(a => a.name) || [];
 }
 
-async function getAllMids() {
-  const data = await hlPost({ type: 'allMids' });
-  if (data && Object.keys(data).length > 0) {
-    return data;
-  }
-  // If allMids fails, try metaAndAssetCtxs as fallback
-  try {
-    const meta = await hlPost({ type: 'metaAndAssetCtxs' });
-    if (meta && Array.isArray(meta) && meta.length >= 2) {
-      const mids = {};
-      const universe = meta[0]?.universe || [];
-      const ctxs = meta[1] || [];
-      for (let i = 0; i < universe.length && i < ctxs.length; i++) {
-        const coin = universe[i]?.name;
-        const midPx = ctxs[i]?.midPx;
-        if (coin && midPx) mids[coin] = midPx;
-      }
-      if (Object.keys(mids).length > 0) {
-        console.log('✅ allMids recovered from metaAndAssetCtxs');
-        return mids;
-      }
-    }
-  } catch (e) {}
-  return {};
-}
-
+async function getAllMids() { return (await hlPost({ type: 'allMids' })) || {}; }
 async function getUserState(address) { return await hlPost({ type: 'clearinghouseState', user: address }); }
 
 const allTimePnlCache = new Map();
@@ -488,14 +415,9 @@ function processPosition(userAddress, position, currentPrice, accountData = null
   const isLong = szi > 0;
   const distanceToLiq = isLong ? (markPrice - liqPx) / markPrice : (liqPx - markPrice) / markPrice;
   
-  // For shitcoins with $2M+ positions, allow up to 15% distance (potential vault attacks)
-  // For top coins, only track up to 10% distance
-  const isShitcoinLargePosition = isShitcoin(coin) && positionUSD >= 2000000;
-  const maxDistance = isShitcoinLargePosition ? 0.15 : 0.10;
+  if (distanceToLiq > CONFIG.DANGER_THRESHOLD_10 || distanceToLiq < 0) return null;
   
-  if (distanceToLiq > maxDistance || distanceToLiq < 0) return null;
-  
-  const dangerLevel = distanceToLiq <= CONFIG.DANGER_THRESHOLD_5 ? 'CRITICAL' : distanceToLiq <= CONFIG.DANGER_THRESHOLD_10 ? 'WARNING' : 'WATCH';
+  const dangerLevel = distanceToLiq <= CONFIG.DANGER_THRESHOLD_5 ? 'CRITICAL' : 'WARNING';
   
   let walletBalance = null, otherPositions = [], totalUnrealizedPnl = 0;
   if (accountData) {
@@ -537,108 +459,33 @@ function processPosition(userAddress, position, currentPrice, accountData = null
 // ============================================
 let ws = null;
 let wsReconnectAttempts = 0;
-let lastTradeReceived = 0;
-let totalTradesReceived = 0;
-let wsPingInterval = null;
-
-// HLP Vault address - receives all liquidations
-const HLP_VAULT = '0xdfc24b077bc1425ad1dea75bcb6f8158e10df303';
-
-// Top coins to monitor for whale trades
-const MONITORED_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'SUI', 'PEPE', 'WIF', 'BONK', 'HYPE', 'AVAX', 'LINK', 'ARB', 'OP', 'INJ', 'TIA', 'SEI', 'APT', 'NEAR', 'FTM'];
 
 function connectWebSocket() {
   try {
-    // Varsa eski ping sayacını temizle
-    if (wsPingInterval) {
-      clearInterval(wsPingInterval);
-      wsPingInterval = null;
-    }
-    
     ws = new WebSocket(CONFIG.HYPERLIQUID_WS);
     
     ws.on('open', () => {
       console.log('✅ WebSocket connected');
       wsReconnectAttempts = 0;
-      
-      // 1. ÖNCE LİKİDASYON KASASI (HLP Vault)
-      // Bu veri çok az olduğu için hemen abone olabiliriz, ban sebebi olmaz.
-      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
-      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
-
-      // 2. TÜM MARKETİ DİNLEME (GLOBAL BALİNA AVI)
-      // assetMeta listesi initialize() fonksiyonunda doluyor ve marketteki TÜM coinleri içeriyor.
-      // Eğer boşsa mecburen bizim kısa listeyi kullanır.
-      const allCoins = assetMeta.length > 0 ? assetMeta : MONITORED_COINS;
-      
-      console.log(`🌍 GLOBAL MODE STARTING: Will subscribe to ALL ${allCoins.length} assets...`);
-      console.log('🐢 Subscribing slowly (approx 4 requests/sec) to maintain stable connection...');
-
-      // Her 250ms'de bir (Saniyede 4 coin) abone oluyoruz.
-      // 150 coin varsa ~37 saniye sürer. Ama bağlantı asla kopmaz.
-      allCoins.forEach((coin, index) => {
-        setTimeout(() => {
-          if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: coin } }));
-            
-            // Kullanıcı görsün diye her 50 coinde bir bilgi geçelim
-            if ((index + 1) % 50 === 0 || index === allCoins.length - 1) {
-                console.log(`📡 Progress: Listening to ${index + 1}/${allCoins.length} coins...`);
-            }
-          }
-        }, index * 250); 
-      });
-
-      // Bitiş mesajı (tahmini süre sonunda)
-      setTimeout(() => {
-        console.log(`✅ FULL MARKET COVERAGE: Now monitoring huge trades (> $${CONFIG.MIN_TRADE_USD}) on all ${allCoins.length} assets!`);
-      }, allCoins.length * 250 + 2000);
-      
-      // 3. PING (Bağlantıyı Canlı Tut)
-      wsPingInterval = setInterval(() => {
-        if (ws && ws.readyState === 1) {
-          ws.ping();
-        }
-      }, 20000); 
-    });
-    
-    ws.on('pong', () => {
-      // Connection is alive
+      // Subscribe to ALL trades (coin: null means all coins)
+      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades' } }));
     });
     
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data);
-        
-        // Abonelik onay mesajlarını loglamaya gerek yok, kalabalık yapmasın
-        // if (msg.channel === 'subscriptionResponse') { ... }
-        
-        // TRADE İŞLEME (Burası senin balina yakalayan yerin)
+        if (msg.channel === 'subscriptionResponse') {
+          console.log('✅ Subscribed to trades stream');
+        }
         if (msg.channel === 'trades' && msg.data) {
-          if (Array.isArray(msg.data) && msg.data.length > 0) {
-            lastTradeReceived = Date.now();
-            totalTradesReceived += msg.data.length;
-            processTradesForDiscovery(msg.data);
-          }
+          processTradesForDiscovery(msg.data);
+          processLiquidations(msg.data);
         }
-        
-        // Likidasyon işleme
-        if (msg.channel === 'userEvents' && msg.data) {
-          processHlpUserEvents(msg.data);
-        }
-        if (msg.channel === 'userFills' && msg.data) {
-          if (msg.data.fills && Array.isArray(msg.data.fills)) {
-            processHlpFills(msg.data.fills);
-          }
-        }
-      } catch (e) {
-        console.error('❌ WebSocket message parse error:', e.message);
-      }
+      } catch (e) {}
     });
     
-    // HATA LOGLAMA (Artık sebep ve kodu göreceğiz)
-    ws.on('close', (code, reason) => {
-      console.log(`⚠️ WebSocket closed (Code: ${code}, Reason: ${reason}), reconnecting in 5s...`);
+    ws.on('close', () => {
+      console.log('⚠️ WebSocket closed, reconnecting in 5s...');
       wsReconnectAttempts++;
       setTimeout(connectWebSocket, Math.min(5000 * wsReconnectAttempts, 30000));
     });
@@ -653,63 +500,42 @@ function connectWebSocket() {
 }
 
 function processTradesForDiscovery(trades) {
-  if (!trades || !Array.isArray(trades)) {
-    console.warn('⚠️ processTradesForDiscovery: Invalid trades data');
-    return;
-  }
-
-  let processedCount = 0;
+  if (!trades || !Array.isArray(trades)) return;
+  
   for (const trade of trades) {
-    try {
-      if (!trade || !trade.coin) continue;
-
-      const sz = parseFloat(trade.sz || 0);
-      const px = parseFloat(trade.px || 0);
-      if (!sz || !px) continue;
-
-      const tradeValue = Math.abs(sz) * px;
-      if (tradeValue < CONFIG.MIN_TRADE_USD) continue;
-
-      const users = trade.users || [];
-      if (!Array.isArray(users) || users.length === 0) continue;
-
-      for (const user of users) {
-        if (!user || typeof user !== 'string' || user.length < 10) continue;
-
-        const addrLower = user.toLowerCase();
-        const isNewWhale = !knownWhaleAddresses.has(addrLower);
-
-        knownWhaleAddresses.add(addrLower);
-        addressLastSeen.set(addrLower, Date.now());
-        addressTradeVolume.set(addrLower, (addressTradeVolume.get(addrLower) || 0) + tradeValue);
-
-        saveWhaleToDb(addrLower, tradeValue);
-
-        if (tradeValue >= 500000) {
-          console.log('🐋 ' + (isNewWhale ? 'NEW ' : '') + 'WHALE: ' + addrLower.slice(0,10) + '... | ' + trade.coin + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
-          checkAddressImmediately(addrLower, trade.coin, tradeValue);
-        }
-        processedCount++;
+    const sz = parseFloat(trade.sz || 0);
+    const px = parseFloat(trade.px || 0);
+    if (!sz || !px) continue;
+    
+    const tradeValue = Math.abs(sz) * px;
+    if (tradeValue < CONFIG.MIN_TRADE_USD) continue;
+    
+    const users = trade.users || [];
+    for (const user of users) {
+      if (!user || user.length < 10) continue;
+      
+      const addrLower = user.toLowerCase();
+      const isNewWhale = !knownWhaleAddresses.has(addrLower);
+      
+      knownWhaleAddresses.add(addrLower);
+      addressLastSeen.set(addrLower, Date.now());
+      addressTradeVolume.set(addrLower, (addressTradeVolume.get(addrLower) || 0) + tradeValue);
+      
+      saveWhaleToDb(addrLower, tradeValue);
+      
+      if (tradeValue >= 500000) {
+        console.log('🐋 ' + (isNewWhale ? 'NEW ' : '') + 'WHALE: ' + addrLower.slice(0,10) + '... | ' + trade.coin + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
+        checkAddressImmediately(addrLower, trade.coin, tradeValue);
       }
-    } catch (err) {
-      console.error('❌ Error processing trade:', err.message, trade);
     }
   }
-
-  if (processedCount > 0) {
-    console.log('📊 Processed ' + processedCount + ' whale trades from ' + trades.length + ' total trades');
-  }
 }
-
-// Track known positions to detect truly new ones
-const knownPositionKeys = new Set();
 
 async function checkAddressImmediately(address, tradeCoin, tradeValue) {
   try {
     const state = await getUserState(address);
     if (state && state.assetPositions && state.assetPositions.length > 0) {
       const [allTimePnl, walletAgeDays] = await Promise.all([getCachedAllTimePnl(address), getWalletAge(address)]);
-      
       for (const assetPos of state.assetPositions) {
         const pos = assetPos.position;
         const processed = processPosition(address, pos, allMids[pos.coin], state);
@@ -720,39 +546,16 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
             processed.isProfitableWhale = allTimePnl > 0;
             processed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
           }
-          
-          const key = address + '-' + pos.coin;
           const existingIdx = trackedPositions.findIndex(p => p.user === address && p.coin === pos.coin);
-          
-          // Check if this is a potential vault attack (shitcoin + large position)
-          const isPotentialVaultAttack = isShitcoin(pos.coin) && processed.positionUSD >= 2000000;
-          
-          if (existingIdx >= 0) {
-            // Update existing position - NO alert
-            trackedPositions[existingIdx] = processed;
-          } else {
-            // New position in trackedPositions
-            trackedPositions.unshift(processed);
-            
-            // Alert if:
-            // 1. First time seeing AND trade is for same coin, OR
-            // 2. Potential vault attack (shitcoin $2M+) - NEVER miss these!
-            if (!knownPositionKeys.has(key)) {
-              knownPositionKeys.add(key);
-              
-              if (pos.coin === tradeCoin || isPotentialVaultAttack) {
-                console.log('🚨 NEW POSITION: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | $' + (processed.positionUSD/1000000).toFixed(2) + 'M | ' + processed.distancePercent + '%' + (isPotentialVaultAttack ? ' ⚠️ SHITCOIN' : ''));
-                sendAlerts(processed);
-              }
-            }
-          }
+          if (existingIdx >= 0) trackedPositions[existingIdx] = processed;
+          else trackedPositions.unshift(processed);
+          console.log('🚨 DETECT: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | Age: ' + formatWalletAge(walletAgeDays));
+          if (existingIdx < 0) sendAlerts(processed);
         }
       }
       trackedPositions.sort((a, b) => a.distanceToLiq - b.distanceToLiq);
     }
-  } catch (err) {
-    console.error('❌ checkAddressImmediately error:', err.message);
-  }
+  } catch (err) {}
 }
 
 // ============================================
@@ -762,283 +565,54 @@ let recentLiquidations = [];
 let recentWhaleLiquidations = [];
 const MAX_LIQUIDATIONS = 200;
 
-// Fetch recent liquidations via REST API (more reliable than WebSocket detection)
-async function fetchRecentLiquidations() {
-  try {
-    // Get liquidatable positions first
-    const liquidatable = await hlPost({ type: 'liquidatable' });
-    if (liquidatable && Array.isArray(liquidatable)) {
-      console.log(`📊 Found ${liquidatable.length} liquidatable positions`);
-    }
-    
-    // Also try to get recent fills that are liquidations
-    // We'll check the HLP vault's recent fills as it handles most liquidations
-    const hlpVault = '0xdfc24b077bc1425ad1dea75bcb6f8158e10df303';
-    const response = await axios.post(CONFIG.HYPERLIQUID_API, {
-      type: 'userFillsByTime',
-      user: hlpVault,
-      startTime: Date.now() - 300000, // Last 5 minutes
-      endTime: Date.now()
-    });
-    
-    if (response.data && Array.isArray(response.data)) {
-      let newLiqCount = 0;
-      for (const fill of response.data) {
-        // HLP fills that are "Close Short" or "Close Long" against liquidated positions
-        if (fill.dir && (fill.dir.includes('Liq') || fill.liquidation)) {
-          const value = Math.abs(parseFloat(fill.sz)) * parseFloat(fill.px);
-          if (value < 10000) continue;
-          
-          const liq = {
-            id: fill.hash || (Date.now() + '-' + Math.random().toString(36).substr(2, 9)),
-            coin: fill.coin,
-            side: fill.side === 'B' ? 'SHORT' : 'LONG', // If HLP buys, a short was liquidated
-            price: parseFloat(fill.px),
-            size: Math.abs(parseFloat(fill.sz)),
-            value: value,
-            timestamp: fill.time || Date.now(),
-            hash: fill.hash
-          };
-          
-          // Check duplicate
-          const isDuplicate = recentLiquidations.some(l => 
-            l.hash === liq.hash || 
-            (l.coin === liq.coin && Math.abs(l.timestamp - liq.timestamp) < 1000 && Math.abs(l.value - liq.value) < 100)
-          );
-          
-          if (!isDuplicate) {
-            recentLiquidations.unshift(liq);
-            newLiqCount++;
-            
-            if (value >= 500000) {
-              recentWhaleLiquidations.unshift(liq);
-              console.log('🐋💀 WHALE LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (value/1000000).toFixed(2) + 'M');
-            }
-          }
-        }
-      }
-      
-      // Trim arrays
-      if (recentLiquidations.length > MAX_LIQUIDATIONS) {
-        recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
-      }
-      if (recentWhaleLiquidations.length > 50) {
-        recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
-      }
-      
-      if (newLiqCount > 0) {
-        console.log(`💀 Added ${newLiqCount} liquidations from HLP fills`);
-      }
-    }
-  } catch (err) {
-    if (CONFIG.DEBUG_MODE) console.error('Liquidation fetch error:', err.message);
-  }
-}
-
-// Process HLP userEvents - contains REAL liquidation events from the protocol
-function processHlpUserEvents(data) {
-  try {
-    // Handle both single event and array
-    const events = Array.isArray(data) ? data : [data];
-    
-    for (const event of events) {
-      // Skip snapshot data
-      if (event.isSnapshot) continue;
-      
-      // Check for liquidation event
-      if (event.liquidation) {
-        const liq = event.liquidation;
-        const value = Math.abs(parseFloat(liq.liquidated_ntl_pos || 0));
-        
-        if (value < 10000) continue; // Skip tiny liquidations
-        
-        const liqData = {
-          id: liq.lid || Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-          coin: 'UNKNOWN', // Will be enriched from fills
-          side: parseFloat(liq.liquidated_ntl_pos) > 0 ? 'LONG' : 'SHORT',
-          price: 0,
-          size: 0,
-          value: value,
-          timestamp: Date.now(),
-          liquidatedUser: liq.liquidated_user,
-          accountValue: parseFloat(liq.liquidated_account_value || 0),
-          source: 'userEvents'
-        };
-        
-        // Check duplicate
-        const isDuplicate = recentLiquidations.some(l => 
-          l.id === liqData.id || 
-          (l.liquidatedUser === liqData.liquidatedUser && Math.abs(l.timestamp - liqData.timestamp) < 5000)
-        );
-        
-        if (!isDuplicate) {
-          recentLiquidations.unshift(liqData);
-          if (recentLiquidations.length > MAX_LIQUIDATIONS) {
-            recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
-          }
-          
-          if (value >= 500000) {
-            recentWhaleLiquidations.unshift(liqData);
-            if (recentWhaleLiquidations.length > 50) {
-              recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
-            }
-            console.log('🐋💀 WHALE LIQ (userEvents): ' + liqData.side + ' | $' + (value/1000000).toFixed(2) + 'M | User: ' + liqData.liquidatedUser?.slice(0,10));
-          } else if (value >= 100000) {
-            console.log('💀 LIQ (userEvents): ' + liqData.side + ' | $' + (value/1000).toFixed(0) + 'K');
-          }
-        }
-      }
-      
-      // Also check fills within userEvents for liquidation info
-      if (event.fills && Array.isArray(event.fills)) {
-        processHlpFills(event.fills);
-      }
-    }
-  } catch (err) {
-    console.error('❌ processHlpUserEvents error:', err.message);
-  }
-}
-
-// Process HLP fills - contains liquidation details with coin info
-function processHlpFills(fills) {
-  if (!fills || !Array.isArray(fills)) return;
+function processLiquidations(trades) {
+  if (!trades || !Array.isArray(trades)) return;
   
-  let liqCount = 0;
-  for (const fill of fills) {
-    try {
-      // Skip snapshot data
-      if (fill.isSnapshot) continue;
-      
-      // Check if this fill is a liquidation
-      const hasLiquidation = fill.liquidation && fill.liquidation.liquidatedUser;
-      const isLiqDir = fill.dir && fill.dir.toLowerCase().includes('liq');
-      
-      if (!hasLiquidation && !isLiqDir) continue;
-      
-      const sz = Math.abs(parseFloat(fill.sz || 0));
-      const px = parseFloat(fill.px || 0);
-      const value = sz * px;
-      
-      if (value < 10000) continue;
-      
-      // Determine side: if HLP buys (side=B), a short was liquidated
-      // If HLP sells (side=A), a long was liquidated
-      const side = fill.side === 'B' ? 'SHORT' : 'LONG';
-      
-      const liqData = {
-        id: fill.hash || Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-        coin: fill.coin,
-        side: side,
+  for (const trade of trades) {
+    const sz = parseFloat(trade.sz || 0);
+    const px = parseFloat(trade.px || 0);
+    if (!sz || !px) continue;
+    
+    const tradeValue = Math.abs(sz) * px;
+    
+    // crossed=true means taker order (market order) - liquidations are always market orders
+    const isCrossed = trade.crossed === true;
+    
+    if (isCrossed && tradeValue >= 50000) {
+      const liq = {
+        id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        coin: trade.coin,
+        side: trade.side === 'B' ? 'SHORT' : 'LONG',
         price: px,
-        size: sz,
-        value: value,
-        timestamp: fill.time || Date.now(),
-        hash: fill.hash,
-        liquidatedUser: fill.liquidation?.liquidatedUser,
-        markPx: fill.liquidation?.markPx,
-        method: fill.liquidation?.method,
-        source: 'hlpFills'
+        size: Math.abs(sz),
+        value: tradeValue,
+        timestamp: trade.time || Date.now(),
+        hash: trade.hash || null
       };
       
-      // Check duplicate by hash or similar params
       const isDuplicate = recentLiquidations.some(l => 
-        (l.hash && l.hash === liqData.hash) ||
-        (l.coin === liqData.coin && Math.abs(l.value - liqData.value) < 1000 && Math.abs(l.timestamp - liqData.timestamp) < 3000)
+        l.coin === liq.coin && 
+        Math.abs(l.value - liq.value) < 1000 && 
+        Math.abs(l.timestamp - liq.timestamp) < 3000
       );
       
       if (!isDuplicate) {
-        recentLiquidations.unshift(liqData);
+        recentLiquidations.unshift(liq);
         if (recentLiquidations.length > MAX_LIQUIDATIONS) {
           recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
         }
         
-        if (value >= 500000) {
-          recentWhaleLiquidations.unshift(liqData);
+        if (tradeValue >= 500000) {
+          recentWhaleLiquidations.unshift(liq);
           if (recentWhaleLiquidations.length > 50) {
             recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
           }
-          console.log('🐋💀 WHALE LIQ: ' + liqData.coin + ' ' + side + ' | $' + (value/1000000).toFixed(2) + 'M');
-        } else if (value >= 100000) {
-          console.log('💀 LIQ: ' + liqData.coin + ' ' + side + ' | $' + (value/1000).toFixed(0) + 'K');
-        }
-        liqCount++;
-      }
-    } catch (err) {
-      console.error('❌ Error processing HLP fill:', err.message);
-    }
-  }
-  
-  if (liqCount > 0) {
-    console.log('💀 Detected ' + liqCount + ' liquidations from HLP fills');
-  }
-}
-
-// DEPRECATED: Old unreliable method - keeping for reference
-function processLiquidationsOld(trades) {
-  if (!trades || !Array.isArray(trades)) return;
-
-  let liqCount = 0;
-  for (const trade of trades) {
-    try {
-      if (!trade || !trade.coin) continue;
-
-      const sz = parseFloat(trade.sz || 0);
-      const px = parseFloat(trade.px || 0);
-      if (!sz || !px) continue;
-
-      const tradeValue = Math.abs(sz) * px;
-
-      // Check for liquidation indicators:
-      // 1. trade.liquidation field (if available)
-      // 2. trade.dir contains "Liq"
-      // 3. Large crossed trade (heuristic, less reliable)
-      const hasLiqFlag = trade.liquidation === true || trade.isLiquidation === true;
-      const hasLiqDir = trade.dir && typeof trade.dir === 'string' && trade.dir.toLowerCase().includes('liq');
-      const isLargeCrossed = trade.crossed === true && tradeValue >= 100000;
-
-      if ((hasLiqFlag || hasLiqDir || isLargeCrossed) && tradeValue >= 50000) {
-        const liq = {
-          id: trade.hash || (Date.now() + '-' + Math.random().toString(36).substr(2, 9)),
-          coin: trade.coin,
-          side: trade.side === 'B' ? 'SHORT' : 'LONG',
-          price: px,
-          size: Math.abs(sz),
-          value: tradeValue,
-          timestamp: trade.time || Date.now(),
-          hash: trade.hash || null,
-          source: hasLiqFlag ? 'flag' : hasLiqDir ? 'dir' : 'crossed'
-        };
-
-        const isDuplicate = recentLiquidations.some(l =>
-          (l.hash && l.hash === liq.hash) ||
-          (l.coin === liq.coin && Math.abs(l.value - liq.value) < 1000 && Math.abs(l.timestamp - liq.timestamp) < 3000)
-        );
-
-        if (!isDuplicate) {
-          recentLiquidations.unshift(liq);
-          if (recentLiquidations.length > MAX_LIQUIDATIONS) {
-            recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
-          }
-
-          if (tradeValue >= 500000) {
-            recentWhaleLiquidations.unshift(liq);
-            if (recentWhaleLiquidations.length > 50) {
-              recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
-            }
-            console.log('🐋💀 WHALE LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
-          } else if (tradeValue >= 100000) {
-            console.log('💀 LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000).toFixed(0) + 'k');
-          }
-          liqCount++;
+          console.log('🐋💀 WHALE LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
+        } else if (tradeValue >= 100000) {
+          console.log('💀 LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000).toFixed(0) + 'k');
         }
       }
-    } catch (err) {
-      console.error('❌ Error processing liquidation:', err.message);
     }
-  }
-
-  if (liqCount > 0) {
-    console.log('💀 Detected ' + liqCount + ' liquidations from WebSocket');
   }
 }
 
@@ -1079,80 +653,38 @@ async function scanPositions(addresses) {
 }
 
 async function refreshPositions() {
-  try {
-    if (knownWhaleAddresses.size === 0) {
-      console.log('⚠️ No whales discovered yet. Waiting for trades...');
-      return;
-    }
-    console.log('🔍 Scanning ' + knownWhaleAddresses.size + ' addresses...');
-    const newMids = await getAllMids();
-    if (newMids && Object.keys(newMids).length > 0) {
-      allMids = newMids;
-    } else if (Object.keys(allMids).length > 0) {
-      console.log('⚠️ allMids fetch failed - using cached prices (' + Object.keys(allMids).length + ' coins)');
-    } else {
-      console.error('❌ No price data available - skipping refresh');
-      return;
-    }
-    
-    // Just update positions for UI display - NO alerts here
-    // Alerts are ONLY sent from checkAddressImmediately when a new trade is detected
-    trackedPositions = await scanPositions([...knownWhaleAddresses].slice(0, CONFIG.MAX_ADDRESSES_TO_SCAN));
-    
-    const longs = trackedPositions.filter(p => p.direction === 'LONG');
-    const shorts = trackedPositions.filter(p => p.direction === 'SHORT');
-    console.log('✅ Found ' + trackedPositions.length + ' at-risk (' + longs.length + ' longs, ' + shorts.length + ' shorts) - ' + trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length + ' critical');
-  } catch (err) {
-    console.error('❌ refreshPositions error:', err.message);
+  if (knownWhaleAddresses.size === 0) { 
+    console.log('⚠️ No whales discovered yet. Waiting for trades...'); 
+    return; 
   }
+  console.log('🔍 Scanning ' + knownWhaleAddresses.size + ' addresses...');
+  allMids = await getAllMids();
+  trackedPositions = await scanPositions([...knownWhaleAddresses].slice(0, CONFIG.MAX_ADDRESSES_TO_SCAN));
+  console.log('✅ Found ' + trackedPositions.length + ' at-risk (' + trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length + ' critical)');
 }
 
 async function initialize() {
-  console.log('🚀 Starting HL Liquidation Hunter v2.1...');
+  console.log('🚀 Starting HL Liquidation Hunter...');
   await initDatabase();
   assetMeta = await getAssetMeta();
   console.log('✅ Loaded ' + assetMeta.length + ' assets');
   allMids = await getAllMids();
-
+  
   // Fetch top traders from leaderboard
   await fetchLeaderboardTraders();
-
+  
   connectWebSocket();
   console.log('⏳ Waiting 5s for whale discovery...');
   await new Promise(r => setTimeout(r, 5000));
   await refreshPositions();
-  
-  // Mark all existing positions as known (so we don't alert for them)
-  for (const pos of trackedPositions) {
-    knownPositionKeys.add(pos.user + '-' + pos.coin);
-  }
-  console.log('📝 Marked ' + knownPositionKeys.size + ' existing positions as known (no alerts for these)');
-  
   setInterval(refreshPositions, CONFIG.REFRESH_INTERVAL);
-
+  
   // Refresh leaderboard every 10 minutes
   setInterval(fetchLeaderboardTraders, 10 * 60 * 1000);
-
+  
   // Background liquidatable scan every 3 minutes
   backgroundLiquidatableScan();
   setInterval(backgroundLiquidatableScan, 3 * 60 * 1000);
-  
-  // Fetch liquidations from HLP vault every 30 seconds
-  fetchRecentLiquidations();
-  setInterval(fetchRecentLiquidations, 30000);
-
-  // WebSocket health check every 30 seconds
-  setInterval(() => {
-    if (!ws || ws.readyState !== 1) {
-      console.log('⚠️ WebSocket not connected, attempting reconnect...');
-      connectWebSocket();
-    // FIX: Increased timeout from 120s (2m) to 300s (5m) to avoid disconnects on low volume
-    } else if (lastTradeReceived > 0 && (Date.now() - lastTradeReceived) > 300000) {
-      console.log('⚠️ No trades received in 5+ minutes, reconnecting WebSocket...');
-      ws.close();
-      connectWebSocket();
-    }
-  }, 30000);
 }
 
 // Background scan for liquidatable positions
@@ -1491,50 +1023,6 @@ app.get('/api/db-stats', async (req, res) => {
     const result = await pool.query('SELECT COUNT(*) FROM whales');
     res.json({ connected: true, whales: parseInt(result.rows[0].count) });
   } catch (err) { res.json({ connected: false, error: err.message }); }
-});
-
-app.get('/api/diagnostics', (req, res) => {
-  const wsState = ws ? (ws.readyState === 1 ? 'OPEN' : ws.readyState === 0 ? 'CONNECTING' : ws.readyState === 2 ? 'CLOSING' : 'CLOSED') : 'NULL';
-  const secondsSinceLastTrade = lastTradeReceived > 0 ? Math.floor((Date.now() - lastTradeReceived) / 1000) : null;
-  res.json({
-    websocket: {
-      connected: ws && ws.readyState === 1,
-      state: wsState,
-      reconnectAttempts: wsReconnectAttempts,
-      lastTradeReceived: lastTradeReceived > 0 ? new Date(lastTradeReceived).toISOString() : 'Never',
-      secondsSinceLastTrade: secondsSinceLastTrade,
-      totalTradesReceived: totalTradesReceived
-    },
-    positions: {
-      total: trackedPositions.length,
-      longs: trackedPositions.filter(p => p.direction === 'LONG').length,
-      shorts: trackedPositions.filter(p => p.direction === 'SHORT').length,
-      critical: trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length
-    },
-    liquidations: {
-      total: recentLiquidations.length,
-      whale: recentWhaleLiquidations.length
-    },
-    whales: {
-      known: knownWhaleAddresses.size,
-      maxScanning: CONFIG.MAX_ADDRESSES_TO_SCAN
-    },
-    cache: {
-      allMidsCount: Object.keys(allMids).length,
-      pnlCacheSize: allTimePnlCache.size,
-      walletAgeCacheSize: walletAgeCache.size,
-      liquidatableCacheAge: Date.now() - liquidatableCache.lastUpdate,
-      liquidatableLongs: liquidatableCache.longs?.length || 0,
-      liquidatableShorts: liquidatableCache.shorts?.length || 0
-    },
-    config: {
-      minPositionUSD: CONFIG.MIN_POSITION_USD,
-      minTradeUSD: CONFIG.MIN_TRADE_USD,
-      refreshInterval: CONFIG.REFRESH_INTERVAL,
-      telegramConfigured: !!(CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_CHANNEL_ID),
-      twitterConfigured: !!(CONFIG.TWITTER_API_KEY && CONFIG.TWITTER_ACCESS_TOKEN)
-    }
-  });
 });
 
 app.listen(CONFIG.PORT, () => { console.log('🌐 Server on port ' + CONFIG.PORT); initialize(); });
