@@ -574,7 +574,7 @@ function connectWebSocket() {
         if (ws && ws.readyState === 1) {
           ws.ping();
         }
-      }, 30000);
+      }, 20000); // FIX: Reduced from 30s to 20s for better stability
     });
     
     ws.on('pong', () => {
@@ -618,8 +618,9 @@ function connectWebSocket() {
       }
     });
     
-    ws.on('close', () => {
-      console.log('⚠️ WebSocket closed, reconnecting in 5s...');
+    // FIX: Added code and reason logging
+    ws.on('close', (code, reason) => {
+      console.log(`⚠️ WebSocket closed (Code: ${code}, Reason: ${reason}), reconnecting in 5s...`);
       wsReconnectAttempts++;
       setTimeout(connectWebSocket, Math.min(5000 * wsReconnectAttempts, 30000));
     });
@@ -1127,8 +1128,9 @@ async function initialize() {
     if (!ws || ws.readyState !== 1) {
       console.log('⚠️ WebSocket not connected, attempting reconnect...');
       connectWebSocket();
-    } else if (lastTradeReceived > 0 && (Date.now() - lastTradeReceived) > 120000) {
-      console.log('⚠️ No trades received in 2+ minutes, reconnecting WebSocket...');
+    // FIX: Increased timeout from 120s (2m) to 300s (5m) to avoid disconnects on low volume
+    } else if (lastTradeReceived > 0 && (Date.now() - lastTradeReceived) > 300000) {
+      console.log('⚠️ No trades received in 5+ minutes, reconnecting WebSocket...');
       ws.close();
       connectWebSocket();
     }
