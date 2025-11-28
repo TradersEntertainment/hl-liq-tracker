@@ -809,7 +809,10 @@ async function backgroundLiquidatableScan() {
             if (distanceToLiq > 0.15 || distanceToLiq < 0) continue;
             
             const dangerLevel = distanceToLiq <= 0.05 ? 'CRITICAL' : distanceToLiq <= 0.10 ? 'WARNING' : 'WATCH';
-            
+
+            // Get position open time
+            const openTime = await getPositionOpenTime(addr, coin, entryPx);
+
             const posData = {
               user: addr,
               userShort: addr.slice(0, 6) + '...' + addr.slice(-4),
@@ -824,7 +827,7 @@ async function backgroundLiquidatableScan() {
               unrealizedPnl: parseFloat(pos.unrealizedPnl) || 0,
               dangerLevel,
               hypurrscanUrl: getHypurrscanUrl(addr),
-              timestamp: Date.now()
+              timestamp: openTime
             };
             
             if (isLong) results.longs.push(posData);
