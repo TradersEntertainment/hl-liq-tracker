@@ -549,7 +549,7 @@ const MONITORED_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'SUI', 'PEPE', 'WIF
 
 function connectWebSocket() {
   try {
-    // Clear any existing ping interval
+    // Varsa eski ping sayacını temizle
     if (wsPingInterval) {
       clearInterval(wsPingInterval);
       wsPingInterval = null;
@@ -561,16 +561,40 @@ function connectWebSocket() {
       console.log('✅ WebSocket connected');
       wsReconnectAttempts = 0;
       
-      // 1. ÖNCELİK: Likidasyonları yakalamak için HLP Vault'a abone ol
-      // Bu en kritik veri, o yüzden direkt bunu istiyoruz.
-      console.log('📡 Subscribing to HLP Vault (Liquidations)...');
+      // 1. ÖNCE LİKİDASYON KASASI (HLP Vault)
+      // Bu veri çok az olduğu için hemen abone olabiliriz, ban sebebi olmaz.
       ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
       ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
+
+      // 2. TÜM MARKETİ DİNLEME (GLOBAL BALİNA AVI)
+      // assetMeta listesi initialize() fonksiyonunda doluyor ve marketteki TÜM coinleri içeriyor.
+      // Eğer boşsa mecburen bizim kısa listeyi kullanır.
+      const allCoins = assetMeta.length > 0 ? assetMeta : MONITORED_COINS;
       
-      // NOT: 20 Coinlik balina tarama kısmını (Trades) kaldırdık.
-      // Bağlantıyı koparan oydu. Şu an sadece likidasyon takip edecek.
+      console.log(`🌍 GLOBAL MODE STARTING: Will subscribe to ALL ${allCoins.length} assets...`);
+      console.log('🐢 Subscribing slowly (approx 4 requests/sec) to maintain stable connection...');
+
+      // Her 250ms'de bir (Saniyede 4 coin) abone oluyoruz.
+      // 150 coin varsa ~37 saniye sürer. Ama bağlantı asla kopmaz.
+      allCoins.forEach((coin, index) => {
+        setTimeout(() => {
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: coin } }));
+            
+            // Kullanıcı görsün diye her 50 coinde bir bilgi geçelim
+            if ((index + 1) % 50 === 0 || index === allCoins.length - 1) {
+                console.log(`📡 Progress: Listening to ${index + 1}/${allCoins.length} coins...`);
+            }
+          }
+        }, index * 250); 
+      });
+
+      // Bitiş mesajı (tahmini süre sonunda)
+      setTimeout(() => {
+        console.log(`✅ FULL MARKET COVERAGE: Now monitoring huge trades (> $${CONFIG.MIN_TRADE_USD}) on all ${allCoins.length} assets!`);
+      }, allCoins.length * 250 + 2000);
       
-      // Start ping interval to keep connection alive
+      // 3. PING (Bağlantıyı Canlı Tut)
       wsPingInterval = setInterval(() => {
         if (ws && ws.readyState === 1) {
           ws.ping();
@@ -585,30 +609,23 @@ function connectWebSocket() {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data);
-        if (msg.channel === 'subscriptionResponse') {
-          console.log('✅ Subscribed:', JSON.stringify(msg.data?.subscription?.type || msg.data));
-        }
         
-        // Handle trades for whale discovery
+        // Abonelik onay mesajlarını loglamaya gerek yok, kalabalık yapmasın
+        // if (msg.channel === 'subscriptionResponse') { ... }
+        
+        // TRADE İŞLEME (Burası senin balina yakalayan yerin)
         if (msg.channel === 'trades' && msg.data) {
           if (Array.isArray(msg.data) && msg.data.length > 0) {
             lastTradeReceived = Date.now();
             totalTradesReceived += msg.data.length;
-
-            if (CONFIG.DEBUG_MODE && totalTradesReceived <= 5) {
-              console.log('🔍 DEBUG - Sample trade:', JSON.stringify(msg.data[0], null, 2));
-            }
-
             processTradesForDiscovery(msg.data);
           }
         }
         
-        // Handle HLP userEvents - contains real liquidation events!
+        // Likidasyon işleme
         if (msg.channel === 'userEvents' && msg.data) {
           processHlpUserEvents(msg.data);
         }
-        
-        // Handle HLP fills - backup liquidation detection
         if (msg.channel === 'userFills' && msg.data) {
           if (msg.data.fills && Array.isArray(msg.data.fills)) {
             processHlpFills(msg.data.fills);
@@ -619,7 +636,7 @@ function connectWebSocket() {
       }
     });
     
-    // FIX: Added code and reason logging
+    // HATA LOGLAMA (Artık sebep ve kodu göreceğiz)
     ws.on('close', (code, reason) => {
       console.log(`⚠️ WebSocket closed (Code: ${code}, Reason: ${reason}), reconnecting in 5s...`);
       wsReconnectAttempts++;
