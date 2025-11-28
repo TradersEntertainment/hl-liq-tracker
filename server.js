@@ -136,14 +136,15 @@ function getHyperliquidUrl(address) {
 // ============================================
 const walletAgeDays = new Map();
 const walletAgeCache = new Map();
+const positionOpenTimeCache = new Map(); // Cache for position open times
 
 async function getWalletAge(address) {
   const addrLower = address.toLowerCase();
-  
+
   const cached = walletAgeCache.get(addrLower);
   if (cached && (Date.now() - cached.timestamp) < 3600000) return cached.ageDays;
   if (walletAgeDays.has(addrLower)) return walletAgeDays.get(addrLower);
-  
+
   try {
     const response = await axios.post(CONFIG.HYPERLIQUID_API, {
       type: 'userFillsByTime',
@@ -151,23 +152,66 @@ async function getWalletAge(address) {
       startTime: 0,
       endTime: Date.now()
     });
-    
+
     if (response.data && Array.isArray(response.data) && response.data.length > 0) {
       let earliestTime = Date.now();
       for (const fill of response.data) {
         if (fill.time && fill.time < earliestTime) earliestTime = fill.time;
       }
-      
+
       const ageDays = Math.floor((Date.now() - earliestTime) / (1000 * 60 * 60 * 24));
       walletAgeDays.set(addrLower, ageDays);
       walletAgeCache.set(addrLower, { ageDays, timestamp: Date.now() });
       return ageDays;
     }
-    
+
     walletAgeDays.set(addrLower, 0);
     walletAgeCache.set(addrLower, { ageDays: 0, timestamp: Date.now() });
     return 0;
   } catch (err) { return null; }
+}
+
+async function getPositionOpenTime(address, coin, entryPrice) {
+  const cacheKey = address.toLowerCase() + '-' + coin;
+
+  // Check cache first
+  const cached = positionOpenTimeCache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // Get recent fills for this user
+    const response = await axios.post(CONFIG.HYPERLIQUID_API, {
+      type: 'userFillsByTime',
+      user: address,
+      startTime: Date.now() - (30 * 24 * 60 * 60 * 1000), // Last 30 days
+      endTime: Date.now()
+    });
+
+    if (response.data && Array.isArray(response.data)) {
+      // Find fills for this coin near entry price (within 5%)
+      const relevantFills = response.data
+        .filter(fill => fill.coin === coin)
+        .filter(fill => {
+          const fillPx = parseFloat(fill.px);
+          const priceDiff = Math.abs(fillPx - entryPrice) / entryPrice;
+          return priceDiff < 0.05; // Within 5% of entry price
+        })
+        .sort((a, b) => a.time - b.time); // Oldest first
+
+      if (relevantFills.length > 0) {
+        const openTime = relevantFills[0].time;
+        positionOpenTimeCache.set(cacheKey, openTime);
+        return openTime;
+      }
+    }
+  } catch (err) {
+    console.error('Position open time fetch error:', err.message);
+  }
+
+  // Fallback: use current time
+  const fallbackTime = Date.now();
+  positionOpenTimeCache.set(cacheKey, fallbackTime);
+  return fallbackTime;
 }
 
 // ============================================
@@ -567,6 +611,10 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
         if (processed) {
           processed.allTimePnl = allTimePnl;
           processed.walletAgeDays = walletAgeDays;
+          // Get position open time
+          const openTime = await getPositionOpenTime(address, pos.coin, processed.entryPrice);
+          processed.timestamp = openTime;
+
           if (allTimePnl !== null) {
             processed.isProfitableWhale = allTimePnl > 0;
             processed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
@@ -659,6 +707,10 @@ async function scanPositions(addresses) {
             if (processed) {
               processed.allTimePnl = allTimePnl;
               processed.walletAgeDays = walletAgeDays;
+              // Get position open time
+              const openTime = await getPositionOpenTime(address, assetPos.position.coin, processed.entryPrice);
+              processed.timestamp = openTime;
+
               if (allTimePnl !== null) {
                 processed.isProfitableWhale = allTimePnl > 0;
                 processed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
