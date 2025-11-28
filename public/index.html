@@ -1365,6 +1365,9 @@
               <div class="pos-field-value">${pos.walletBalance ? formatUSD(pos.walletBalance) : '-'}</div>
             </div>
           </div>
+          <div class="pos-prices" style="margin-top: 0.75rem; justify-content: center;">
+            <span style="color: var(--text-muted);">🕐 Detected ${timeAgo(pos.timestamp)} ago</span>
+          </div>
           ${pos.otherPositions && pos.otherPositions.length > 0 ? `
             <button class="other-pos-btn" onclick="toggleOther(${idx})">
               ${pos.otherPositions.length} other position${pos.otherPositions.length > 1 ? 's' : ''} ▼
