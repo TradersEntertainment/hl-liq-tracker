@@ -30,6 +30,7 @@ const CONFIG = {
   TWITTER_ACCESS_SECRET: process.env.TWITTER_ACCESS_SECRET,
   ALERT_COOLDOWN: 5 * 60 * 1000,
   DATABASE_URL: process.env.DATABASE_URL,
+  DEBUG_MODE: process.env.DEBUG_MODE === 'true',
 };
 
 // ============================================
@@ -459,6 +460,8 @@ function processPosition(userAddress, position, currentPrice, accountData = null
 // ============================================
 let ws = null;
 let wsReconnectAttempts = 0;
+let lastTradeReceived = 0;
+let totalTradesReceived = 0;
 
 function connectWebSocket() {
   try {
@@ -475,13 +478,25 @@ function connectWebSocket() {
       try {
         const msg = JSON.parse(data);
         if (msg.channel === 'subscriptionResponse') {
-          console.log('✅ Subscribed to trades stream');
+          console.log('✅ Subscribed to trades stream:', JSON.stringify(msg.data));
         }
         if (msg.channel === 'trades' && msg.data) {
-          processTradesForDiscovery(msg.data);
-          processLiquidations(msg.data);
+          if (Array.isArray(msg.data) && msg.data.length > 0) {
+            lastTradeReceived = Date.now();
+            totalTradesReceived += msg.data.length;
+
+            // Debug mode: log first trade sample
+            if (CONFIG.DEBUG_MODE && totalTradesReceived <= 5) {
+              console.log('🔍 DEBUG - Sample trade:', JSON.stringify(msg.data[0], null, 2));
+            }
+
+            processTradesForDiscovery(msg.data);
+            processLiquidations(msg.data);
+          }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('❌ WebSocket message parse error:', e.message);
+      }
     });
     
     ws.on('close', () => {
@@ -500,34 +515,51 @@ function connectWebSocket() {
 }
 
 function processTradesForDiscovery(trades) {
-  if (!trades || !Array.isArray(trades)) return;
-  
+  if (!trades || !Array.isArray(trades)) {
+    console.warn('⚠️ processTradesForDiscovery: Invalid trades data');
+    return;
+  }
+
+  let processedCount = 0;
   for (const trade of trades) {
-    const sz = parseFloat(trade.sz || 0);
-    const px = parseFloat(trade.px || 0);
-    if (!sz || !px) continue;
-    
-    const tradeValue = Math.abs(sz) * px;
-    if (tradeValue < CONFIG.MIN_TRADE_USD) continue;
-    
-    const users = trade.users || [];
-    for (const user of users) {
-      if (!user || user.length < 10) continue;
-      
-      const addrLower = user.toLowerCase();
-      const isNewWhale = !knownWhaleAddresses.has(addrLower);
-      
-      knownWhaleAddresses.add(addrLower);
-      addressLastSeen.set(addrLower, Date.now());
-      addressTradeVolume.set(addrLower, (addressTradeVolume.get(addrLower) || 0) + tradeValue);
-      
-      saveWhaleToDb(addrLower, tradeValue);
-      
-      if (tradeValue >= 500000) {
-        console.log('🐋 ' + (isNewWhale ? 'NEW ' : '') + 'WHALE: ' + addrLower.slice(0,10) + '... | ' + trade.coin + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
-        checkAddressImmediately(addrLower, trade.coin, tradeValue);
+    try {
+      if (!trade || !trade.coin) continue;
+
+      const sz = parseFloat(trade.sz || 0);
+      const px = parseFloat(trade.px || 0);
+      if (!sz || !px) continue;
+
+      const tradeValue = Math.abs(sz) * px;
+      if (tradeValue < CONFIG.MIN_TRADE_USD) continue;
+
+      const users = trade.users || [];
+      if (!Array.isArray(users) || users.length === 0) continue;
+
+      for (const user of users) {
+        if (!user || typeof user !== 'string' || user.length < 10) continue;
+
+        const addrLower = user.toLowerCase();
+        const isNewWhale = !knownWhaleAddresses.has(addrLower);
+
+        knownWhaleAddresses.add(addrLower);
+        addressLastSeen.set(addrLower, Date.now());
+        addressTradeVolume.set(addrLower, (addressTradeVolume.get(addrLower) || 0) + tradeValue);
+
+        saveWhaleToDb(addrLower, tradeValue);
+
+        if (tradeValue >= 500000) {
+          console.log('🐋 ' + (isNewWhale ? 'NEW ' : '') + 'WHALE: ' + addrLower.slice(0,10) + '... | ' + trade.coin + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
+          checkAddressImmediately(addrLower, trade.coin, tradeValue);
+        }
+        processedCount++;
       }
+    } catch (err) {
+      console.error('❌ Error processing trade:', err.message, trade);
     }
+  }
+
+  if (processedCount > 0) {
+    console.log('📊 Processed ' + processedCount + ' whale trades from ' + trades.length + ' total trades');
   }
 }
 
@@ -536,6 +568,7 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
     const state = await getUserState(address);
     if (state && state.assetPositions && state.assetPositions.length > 0) {
       const [allTimePnl, walletAgeDays] = await Promise.all([getCachedAllTimePnl(address), getWalletAge(address)]);
+      let positionsFound = 0;
       for (const assetPos of state.assetPositions) {
         const pos = assetPos.position;
         const processed = processPosition(address, pos, allMids[pos.coin], state);
@@ -551,11 +584,17 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
           else trackedPositions.unshift(processed);
           console.log('🚨 DETECT: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | Age: ' + formatWalletAge(walletAgeDays));
           if (existingIdx < 0) sendAlerts(processed);
+          positionsFound++;
         }
       }
       trackedPositions.sort((a, b) => a.distanceToLiq - b.distanceToLiq);
+      if (positionsFound === 0) {
+        console.log('ℹ️ ' + address.slice(0, 10) + '... has no at-risk positions');
+      }
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('❌ checkAddressImmediately error for ' + address.slice(0, 10) + '...:', err.message);
+  }
 }
 
 // ============================================
@@ -566,53 +605,70 @@ let recentWhaleLiquidations = [];
 const MAX_LIQUIDATIONS = 200;
 
 function processLiquidations(trades) {
-  if (!trades || !Array.isArray(trades)) return;
-  
+  if (!trades || !Array.isArray(trades)) {
+    console.warn('⚠️ processLiquidations: Invalid trades data');
+    return;
+  }
+
+  let liqCount = 0;
   for (const trade of trades) {
-    const sz = parseFloat(trade.sz || 0);
-    const px = parseFloat(trade.px || 0);
-    if (!sz || !px) continue;
-    
-    const tradeValue = Math.abs(sz) * px;
-    
-    // crossed=true means taker order (market order) - liquidations are always market orders
-    const isCrossed = trade.crossed === true;
-    
-    if (isCrossed && tradeValue >= 50000) {
-      const liq = {
-        id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-        coin: trade.coin,
-        side: trade.side === 'B' ? 'SHORT' : 'LONG',
-        price: px,
-        size: Math.abs(sz),
-        value: tradeValue,
-        timestamp: trade.time || Date.now(),
-        hash: trade.hash || null
-      };
-      
-      const isDuplicate = recentLiquidations.some(l => 
-        l.coin === liq.coin && 
-        Math.abs(l.value - liq.value) < 1000 && 
-        Math.abs(l.timestamp - liq.timestamp) < 3000
-      );
-      
-      if (!isDuplicate) {
-        recentLiquidations.unshift(liq);
-        if (recentLiquidations.length > MAX_LIQUIDATIONS) {
-          recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
-        }
-        
-        if (tradeValue >= 500000) {
-          recentWhaleLiquidations.unshift(liq);
-          if (recentWhaleLiquidations.length > 50) {
-            recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
+    try {
+      if (!trade || !trade.coin) continue;
+
+      const sz = parseFloat(trade.sz || 0);
+      const px = parseFloat(trade.px || 0);
+      if (!sz || !px) continue;
+
+      const tradeValue = Math.abs(sz) * px;
+
+      // crossed=true means taker order (market order) - liquidations are always market orders
+      // Also check for liquidation flag if available
+      const isCrossed = trade.crossed === true;
+      const isLiquidation = trade.liquidation === true || trade.isLiquidation === true;
+
+      if ((isCrossed || isLiquidation) && tradeValue >= 50000) {
+        const liq = {
+          id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+          coin: trade.coin,
+          side: trade.side === 'B' ? 'SHORT' : 'LONG',
+          price: px,
+          size: Math.abs(sz),
+          value: tradeValue,
+          timestamp: trade.time || Date.now(),
+          hash: trade.hash || null
+        };
+
+        const isDuplicate = recentLiquidations.some(l =>
+          l.coin === liq.coin &&
+          Math.abs(l.value - liq.value) < 1000 &&
+          Math.abs(l.timestamp - liq.timestamp) < 3000
+        );
+
+        if (!isDuplicate) {
+          recentLiquidations.unshift(liq);
+          if (recentLiquidations.length > MAX_LIQUIDATIONS) {
+            recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
           }
-          console.log('🐋💀 WHALE LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
-        } else if (tradeValue >= 100000) {
-          console.log('💀 LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000).toFixed(0) + 'k');
+
+          if (tradeValue >= 500000) {
+            recentWhaleLiquidations.unshift(liq);
+            if (recentWhaleLiquidations.length > 50) {
+              recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
+            }
+            console.log('🐋💀 WHALE LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
+          } else if (tradeValue >= 100000) {
+            console.log('💀 LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (tradeValue/1000).toFixed(0) + 'k');
+          }
+          liqCount++;
         }
       }
+    } catch (err) {
+      console.error('❌ Error processing liquidation:', err.message);
     }
+  }
+
+  if (liqCount > 0) {
+    console.log('💀 Detected ' + liqCount + ' liquidations');
   }
 }
 
@@ -653,14 +709,24 @@ async function scanPositions(addresses) {
 }
 
 async function refreshPositions() {
-  if (knownWhaleAddresses.size === 0) { 
-    console.log('⚠️ No whales discovered yet. Waiting for trades...'); 
-    return; 
+  try {
+    if (knownWhaleAddresses.size === 0) {
+      console.log('⚠️ No whales discovered yet. Waiting for trades...');
+      return;
+    }
+    console.log('🔍 Scanning ' + knownWhaleAddresses.size + ' addresses...');
+    allMids = await getAllMids();
+    if (!allMids || Object.keys(allMids).length === 0) {
+      console.error('❌ Failed to fetch allMids - skipping refresh');
+      return;
+    }
+    trackedPositions = await scanPositions([...knownWhaleAddresses].slice(0, CONFIG.MAX_ADDRESSES_TO_SCAN));
+    const longs = trackedPositions.filter(p => p.direction === 'LONG');
+    const shorts = trackedPositions.filter(p => p.direction === 'SHORT');
+    console.log('✅ Found ' + trackedPositions.length + ' at-risk (' + longs.length + ' longs, ' + shorts.length + ' shorts) - ' + trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length + ' critical');
+  } catch (err) {
+    console.error('❌ refreshPositions error:', err.message);
   }
-  console.log('🔍 Scanning ' + knownWhaleAddresses.size + ' addresses...');
-  allMids = await getAllMids();
-  trackedPositions = await scanPositions([...knownWhaleAddresses].slice(0, CONFIG.MAX_ADDRESSES_TO_SCAN));
-  console.log('✅ Found ' + trackedPositions.length + ' at-risk (' + trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length + ' critical)');
 }
 
 async function initialize() {
@@ -669,22 +735,34 @@ async function initialize() {
   assetMeta = await getAssetMeta();
   console.log('✅ Loaded ' + assetMeta.length + ' assets');
   allMids = await getAllMids();
-  
+
   // Fetch top traders from leaderboard
   await fetchLeaderboardTraders();
-  
+
   connectWebSocket();
   console.log('⏳ Waiting 5s for whale discovery...');
   await new Promise(r => setTimeout(r, 5000));
   await refreshPositions();
   setInterval(refreshPositions, CONFIG.REFRESH_INTERVAL);
-  
+
   // Refresh leaderboard every 10 minutes
   setInterval(fetchLeaderboardTraders, 10 * 60 * 1000);
-  
+
   // Background liquidatable scan every 3 minutes
   backgroundLiquidatableScan();
   setInterval(backgroundLiquidatableScan, 3 * 60 * 1000);
+
+  // WebSocket health check every 30 seconds
+  setInterval(() => {
+    if (!ws || ws.readyState !== 1) {
+      console.log('⚠️ WebSocket not connected, attempting reconnect...');
+      connectWebSocket();
+    } else if (lastTradeReceived > 0 && (Date.now() - lastTradeReceived) > 120000) {
+      console.log('⚠️ No trades received in 2+ minutes, reconnecting WebSocket...');
+      ws.close();
+      connectWebSocket();
+    }
+  }, 30000);
 }
 
 // Background scan for liquidatable positions
@@ -1023,6 +1101,50 @@ app.get('/api/db-stats', async (req, res) => {
     const result = await pool.query('SELECT COUNT(*) FROM whales');
     res.json({ connected: true, whales: parseInt(result.rows[0].count) });
   } catch (err) { res.json({ connected: false, error: err.message }); }
+});
+
+app.get('/api/diagnostics', (req, res) => {
+  const wsState = ws ? (ws.readyState === 1 ? 'OPEN' : ws.readyState === 0 ? 'CONNECTING' : ws.readyState === 2 ? 'CLOSING' : 'CLOSED') : 'NULL';
+  const secondsSinceLastTrade = lastTradeReceived > 0 ? Math.floor((Date.now() - lastTradeReceived) / 1000) : null;
+  res.json({
+    websocket: {
+      connected: ws && ws.readyState === 1,
+      state: wsState,
+      reconnectAttempts: wsReconnectAttempts,
+      lastTradeReceived: lastTradeReceived > 0 ? new Date(lastTradeReceived).toISOString() : 'Never',
+      secondsSinceLastTrade: secondsSinceLastTrade,
+      totalTradesReceived: totalTradesReceived
+    },
+    positions: {
+      total: trackedPositions.length,
+      longs: trackedPositions.filter(p => p.direction === 'LONG').length,
+      shorts: trackedPositions.filter(p => p.direction === 'SHORT').length,
+      critical: trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length
+    },
+    liquidations: {
+      total: recentLiquidations.length,
+      whale: recentWhaleLiquidations.length
+    },
+    whales: {
+      known: knownWhaleAddresses.size,
+      maxScanning: CONFIG.MAX_ADDRESSES_TO_SCAN
+    },
+    cache: {
+      allMidsCount: Object.keys(allMids).length,
+      pnlCacheSize: allTimePnlCache.size,
+      walletAgeCacheSize: walletAgeCache.size,
+      liquidatableCacheAge: Date.now() - liquidatableCache.lastUpdate,
+      liquidatableLongs: liquidatableCache.longs?.length || 0,
+      liquidatableShorts: liquidatableCache.shorts?.length || 0
+    },
+    config: {
+      minPositionUSD: CONFIG.MIN_POSITION_USD,
+      minTradeUSD: CONFIG.MIN_TRADE_USD,
+      refreshInterval: CONFIG.REFRESH_INTERVAL,
+      telegramConfigured: !!(CONFIG.TELEGRAM_BOT_TOKEN && CONFIG.TELEGRAM_CHANNEL_ID),
+      twitterConfigured: !!(CONFIG.TWITTER_API_KEY && CONFIG.TWITTER_ACCESS_TOKEN)
+    }
+  });
 });
 
 app.listen(CONFIG.PORT, () => { console.log('🌐 Server on port ' + CONFIG.PORT); initialize(); });
