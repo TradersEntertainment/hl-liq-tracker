@@ -771,7 +771,8 @@ async function backgroundLiquidatableScan() {
               leverage: pos.leverage?.value || 1,
               unrealizedPnl: parseFloat(pos.unrealizedPnl) || 0,
               dangerLevel,
-              hypurrscanUrl: getHypurrscanUrl(addr)
+              hypurrscanUrl: getHypurrscanUrl(addr),
+              timestamp: Date.now()
             };
             
             if (isLong) results.longs.push(posData);

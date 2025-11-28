@@ -1678,6 +1678,9 @@
             <a href="${pos.hypurrscanUrl}" target="_blank">${pos.userShort}</a>
             · Entry: $${formatPrice(pos.entryPrice)} · Mark: $${formatPrice(pos.markPrice)}
           </div>
+          <div style="text-align: center; margin-top: 0.5rem; font-size: 0.7rem; color: var(--text-muted);">
+            🕐 Detected ${timeAgo(pos.timestamp)} ago
+          </div>
         </div>
       `;
     }
