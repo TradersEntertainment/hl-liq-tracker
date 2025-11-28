@@ -614,11 +614,81 @@ let recentLiquidations = [];
 let recentWhaleLiquidations = [];
 const MAX_LIQUIDATIONS = 200;
 
-function processLiquidations(trades) {
-  if (!trades || !Array.isArray(trades)) {
-    console.warn('⚠️ processLiquidations: Invalid trades data');
-    return;
+// Fetch recent liquidations via REST API (more reliable than WebSocket detection)
+async function fetchRecentLiquidations() {
+  try {
+    // Get liquidatable positions first
+    const liquidatable = await hlPost({ type: 'liquidatable' });
+    if (liquidatable && Array.isArray(liquidatable)) {
+      console.log(`📊 Found ${liquidatable.length} liquidatable positions`);
+    }
+    
+    // Also try to get recent fills that are liquidations
+    // We'll check the HLP vault's recent fills as it handles most liquidations
+    const hlpVault = '0xdfc24b077bc1425ad1dea75bcb6f8158e10df303';
+    const response = await axios.post(CONFIG.HYPERLIQUID_API, {
+      type: 'userFillsByTime',
+      user: hlpVault,
+      startTime: Date.now() - 300000, // Last 5 minutes
+      endTime: Date.now()
+    });
+    
+    if (response.data && Array.isArray(response.data)) {
+      let newLiqCount = 0;
+      for (const fill of response.data) {
+        // HLP fills that are "Close Short" or "Close Long" against liquidated positions
+        if (fill.dir && (fill.dir.includes('Liq') || fill.liquidation)) {
+          const value = Math.abs(parseFloat(fill.sz)) * parseFloat(fill.px);
+          if (value < 10000) continue;
+          
+          const liq = {
+            id: fill.hash || (Date.now() + '-' + Math.random().toString(36).substr(2, 9)),
+            coin: fill.coin,
+            side: fill.side === 'B' ? 'SHORT' : 'LONG', // If HLP buys, a short was liquidated
+            price: parseFloat(fill.px),
+            size: Math.abs(parseFloat(fill.sz)),
+            value: value,
+            timestamp: fill.time || Date.now(),
+            hash: fill.hash
+          };
+          
+          // Check duplicate
+          const isDuplicate = recentLiquidations.some(l => 
+            l.hash === liq.hash || 
+            (l.coin === liq.coin && Math.abs(l.timestamp - liq.timestamp) < 1000 && Math.abs(l.value - liq.value) < 100)
+          );
+          
+          if (!isDuplicate) {
+            recentLiquidations.unshift(liq);
+            newLiqCount++;
+            
+            if (value >= 500000) {
+              recentWhaleLiquidations.unshift(liq);
+              console.log('🐋💀 WHALE LIQ: ' + liq.coin + ' ' + liq.side + ' | $' + (value/1000000).toFixed(2) + 'M');
+            }
+          }
+        }
+      }
+      
+      // Trim arrays
+      if (recentLiquidations.length > MAX_LIQUIDATIONS) {
+        recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
+      }
+      if (recentWhaleLiquidations.length > 50) {
+        recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
+      }
+      
+      if (newLiqCount > 0) {
+        console.log(`💀 Added ${newLiqCount} liquidations from HLP fills`);
+      }
+    }
+  } catch (err) {
+    if (CONFIG.DEBUG_MODE) console.error('Liquidation fetch error:', err.message);
   }
+}
+
+function processLiquidations(trades) {
+  if (!trades || !Array.isArray(trades)) return;
 
   let liqCount = 0;
   for (const trade of trades) {
@@ -631,27 +701,30 @@ function processLiquidations(trades) {
 
       const tradeValue = Math.abs(sz) * px;
 
-      // crossed=true means taker order (market order) - liquidations are always market orders
-      // Also check for liquidation flag if available
-      const isCrossed = trade.crossed === true;
-      const isLiquidation = trade.liquidation === true || trade.isLiquidation === true;
+      // Check for liquidation indicators:
+      // 1. trade.liquidation field (if available)
+      // 2. trade.dir contains "Liq"
+      // 3. Large crossed trade (heuristic, less reliable)
+      const hasLiqFlag = trade.liquidation === true || trade.isLiquidation === true;
+      const hasLiqDir = trade.dir && typeof trade.dir === 'string' && trade.dir.toLowerCase().includes('liq');
+      const isLargeCrossed = trade.crossed === true && tradeValue >= 100000;
 
-      if ((isCrossed || isLiquidation) && tradeValue >= 50000) {
+      if ((hasLiqFlag || hasLiqDir || isLargeCrossed) && tradeValue >= 50000) {
         const liq = {
-          id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+          id: trade.hash || (Date.now() + '-' + Math.random().toString(36).substr(2, 9)),
           coin: trade.coin,
           side: trade.side === 'B' ? 'SHORT' : 'LONG',
           price: px,
           size: Math.abs(sz),
           value: tradeValue,
           timestamp: trade.time || Date.now(),
-          hash: trade.hash || null
+          hash: trade.hash || null,
+          source: hasLiqFlag ? 'flag' : hasLiqDir ? 'dir' : 'crossed'
         };
 
         const isDuplicate = recentLiquidations.some(l =>
-          l.coin === liq.coin &&
-          Math.abs(l.value - liq.value) < 1000 &&
-          Math.abs(l.timestamp - liq.timestamp) < 3000
+          (l.hash && l.hash === liq.hash) ||
+          (l.coin === liq.coin && Math.abs(l.value - liq.value) < 1000 && Math.abs(l.timestamp - liq.timestamp) < 3000)
         );
 
         if (!isDuplicate) {
@@ -678,7 +751,7 @@ function processLiquidations(trades) {
   }
 
   if (liqCount > 0) {
-    console.log('💀 Detected ' + liqCount + ' liquidations');
+    console.log('💀 Detected ' + liqCount + ' liquidations from WebSocket');
   }
 }
 
@@ -773,6 +846,10 @@ async function initialize() {
   // Background liquidatable scan every 3 minutes
   backgroundLiquidatableScan();
   setInterval(backgroundLiquidatableScan, 3 * 60 * 1000);
+  
+  // Fetch liquidations from HLP vault every 30 seconds
+  fetchRecentLiquidations();
+  setInterval(fetchRecentLiquidations, 30000);
 
   // WebSocket health check every 30 seconds
   setInterval(() => {
