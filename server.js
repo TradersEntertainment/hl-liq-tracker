@@ -561,34 +561,21 @@ function connectWebSocket() {
       console.log('✅ WebSocket connected');
       wsReconnectAttempts = 0;
       
-      // Subscribe to trades for top coins (whale discovery)
-      // DÜZELTME: Rate limit yememek için istekleri 200ms arayla gönderiyoruz
-      console.log('📡 Subscribing to trades for ' + MONITORED_COINS.length + ' coins (staggered)...');
+      // 1. ÖNCELİK: Likidasyonları yakalamak için HLP Vault'a abone ol
+      // Bu en kritik veri, o yüzden direkt bunu istiyoruz.
+      console.log('📡 Subscribing to HLP Vault (Liquidations)...');
+      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
+      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
       
-      MONITORED_COINS.forEach((coin, index) => {
-        setTimeout(() => {
-          if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: coin } }));
-          }
-        }, index * 200); // Her coin arasında 0.2 saniye bekle
-      });
-      
-      // Subscribe to HLP vault userEvents - this gives us REAL liquidation data!
-      // Bunları da döngü bittikten biraz sonra gönderelim (20 coin * 200ms = 4 saniye sonra)
-      setTimeout(() => {
-          if (ws && ws.readyState === 1) {
-              ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
-              ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
-              console.log('✅ All subscriptions sent.');
-          }
-      }, MONITORED_COINS.length * 200 + 1000);
+      // NOT: 20 Coinlik balina tarama kısmını (Trades) kaldırdık.
+      // Bağlantıyı koparan oydu. Şu an sadece likidasyon takip edecek.
       
       // Start ping interval to keep connection alive
       wsPingInterval = setInterval(() => {
         if (ws && ws.readyState === 1) {
           ws.ping();
         }
-      }, 20000); // FIX: Reduced from 30s to 20s for better stability
+      }, 20000); 
     });
     
     ws.on('pong', () => {
