@@ -562,15 +562,26 @@ function connectWebSocket() {
       wsReconnectAttempts = 0;
       
       // Subscribe to trades for top coins (whale discovery)
-      for (const coin of MONITORED_COINS) {
-        ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: coin } }));
-      }
-      console.log('📡 Subscribed to trades for ' + MONITORED_COINS.length + ' coins');
+      // DÜZELTME: Rate limit yememek için istekleri 200ms arayla gönderiyoruz
+      console.log('📡 Subscribing to trades for ' + MONITORED_COINS.length + ' coins (staggered)...');
+      
+      MONITORED_COINS.forEach((coin, index) => {
+        setTimeout(() => {
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: coin } }));
+          }
+        }, index * 200); // Her coin arasında 0.2 saniye bekle
+      });
       
       // Subscribe to HLP vault userEvents - this gives us REAL liquidation data!
-      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
-      // Also subscribe to HLP fills for backup liquidation detection
-      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
+      // Bunları da döngü bittikten biraz sonra gönderelim (20 coin * 200ms = 4 saniye sonra)
+      setTimeout(() => {
+          if (ws && ws.readyState === 1) {
+              ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
+              ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
+              console.log('✅ All subscriptions sent.');
+          }
+      }, MONITORED_COINS.length * 200 + 1000);
       
       // Start ping interval to keep connection alive
       wsPingInterval = setInterval(() => {
