@@ -547,10 +547,16 @@ function connectWebSocket() {
           console.log('✅ Subscribed to trades stream');
         }
         if (msg.channel === 'trades' && msg.data) {
+          // Log every 100 trades to confirm WebSocket is working
+          if (Math.random() < 0.01) {
+            console.log('📡 WebSocket: Received ' + msg.data.length + ' trades');
+          }
           processTradesForDiscovery(msg.data);
           processLiquidations(msg.data);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('WebSocket message error:', e.message);
+      }
     });
     
     ws.on('close', () => {
@@ -591,9 +597,10 @@ function processTradesForDiscovery(trades) {
       addressTradeVolume.set(addrLower, (addressTradeVolume.get(addrLower) || 0) + tradeValue);
       
       saveWhaleToDb(addrLower, tradeValue);
-      
-      if (tradeValue >= 500000) {
-        console.log('🐋 ' + (isNewWhale ? 'NEW ' : '') + 'WHALE: ' + addrLower.slice(0,10) + '... | ' + trade.coin + ' | $' + (tradeValue/1000000).toFixed(2) + 'M');
+
+      // Check positions for trades $200K+ (lowered threshold)
+      if (tradeValue >= 200000) {
+        console.log('🐋 ' + (isNewWhale ? 'NEW ' : '') + 'Trade: ' + addrLower.slice(0,10) + '... | ' + trade.coin + ' | $' + (tradeValue/1000).toFixed(0) + 'K');
         checkAddressImmediately(addrLower, trade.coin, tradeValue);
       }
     }
@@ -730,14 +737,16 @@ async function scanPositions(addresses) {
 }
 
 async function refreshPositions() {
-  if (knownWhaleAddresses.size === 0) { 
-    console.log('⚠️ No whales discovered yet. Waiting for trades...'); 
-    return; 
+  if (knownWhaleAddresses.size === 0) {
+    console.log('⚠️ No whales discovered yet. Waiting for trades...');
+    console.log('⚠️ WebSocket connected: ' + (ws && ws.readyState === 1 ? 'YES' : 'NO'));
+    return;
   }
   console.log('🔍 Scanning ' + knownWhaleAddresses.size + ' addresses...');
   allMids = await getAllMids();
   trackedPositions = await scanPositions([...knownWhaleAddresses].slice(0, CONFIG.MAX_ADDRESSES_TO_SCAN));
   console.log('✅ Found ' + trackedPositions.length + ' at-risk (' + trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length + ' critical)');
+  console.log('📊 Total whales tracked: ' + knownWhaleAddresses.size);
 }
 
 async function initialize() {
