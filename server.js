@@ -1090,7 +1090,7 @@ async function refreshPositions() {
 }
 
 async function initialize() {
-  console.log('🚀 Starting HL Liquidation Hunter...');
+  console.log('🚀 Starting HL Liquidation Hunter v2.1...');
   await initDatabase();
   assetMeta = await getAssetMeta();
   console.log('✅ Loaded ' + assetMeta.length + ' assets');
