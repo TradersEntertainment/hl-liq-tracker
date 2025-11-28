@@ -386,9 +386,21 @@ async function sendAlerts(position) {
 // ============================================
 // HYPERLIQUID API
 // ============================================
-async function hlPost(body) {
-  try { return (await axios.post(CONFIG.HYPERLIQUID_API, body)).data; }
-  catch (error) { return null; }
+async function hlPost(body, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await axios.post(CONFIG.HYPERLIQUID_API, body, { timeout: 10000 });
+      return response.data;
+    } catch (error) {
+      if (i === retries - 1) {
+        if (CONFIG.DEBUG_MODE) console.error('❌ hlPost failed after ' + retries + ' retries:', body.type, error.message);
+        return null;
+      }
+      // Wait before retry (exponential backoff)
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+  return null;
 }
 
 async function getAssetMeta() {
@@ -396,7 +408,32 @@ async function getAssetMeta() {
   return data?.universe?.map(a => a.name) || [];
 }
 
-async function getAllMids() { return (await hlPost({ type: 'allMids' })) || {}; }
+async function getAllMids() {
+  const data = await hlPost({ type: 'allMids' });
+  if (data && Object.keys(data).length > 0) {
+    return data;
+  }
+  // If allMids fails, try metaAndAssetCtxs as fallback
+  try {
+    const meta = await hlPost({ type: 'metaAndAssetCtxs' });
+    if (meta && Array.isArray(meta) && meta.length >= 2) {
+      const mids = {};
+      const universe = meta[0]?.universe || [];
+      const ctxs = meta[1] || [];
+      for (let i = 0; i < universe.length && i < ctxs.length; i++) {
+        const coin = universe[i]?.name;
+        const midPx = ctxs[i]?.midPx;
+        if (coin && midPx) mids[coin] = midPx;
+      }
+      if (Object.keys(mids).length > 0) {
+        console.log('✅ allMids recovered from metaAndAssetCtxs');
+        return mids;
+      }
+    }
+  } catch (e) {}
+  return {};
+}
+
 async function getUserState(address) { return await hlPost({ type: 'clearinghouseState', user: address }); }
 
 const allTimePnlCache = new Map();
@@ -1003,9 +1040,13 @@ async function refreshPositions() {
       return;
     }
     console.log('🔍 Scanning ' + knownWhaleAddresses.size + ' addresses...');
-    allMids = await getAllMids();
-    if (!allMids || Object.keys(allMids).length === 0) {
-      console.error('❌ Failed to fetch allMids - skipping refresh');
+    const newMids = await getAllMids();
+    if (newMids && Object.keys(newMids).length > 0) {
+      allMids = newMids;
+    } else if (Object.keys(allMids).length > 0) {
+      console.log('⚠️ allMids fetch failed - using cached prices (' + Object.keys(allMids).length + ' coins)');
+    } else {
+      console.error('❌ No price data available - skipping refresh');
       return;
     }
     
