@@ -346,7 +346,9 @@ async function sendTwitterAlert(position) {
 }
 
 async function sendAlerts(position) {
-  if (position.dangerLevel !== 'CRITICAL' && (position.walletAgeDays === null || position.walletAgeDays > 7)) return;
+  // Bildirim koşulları: Likidasyona %10'dan yakın VE pozisyon ≥ $2M
+  if (position.distanceToLiq >= CONFIG.DANGER_THRESHOLD_10) return;
+  if (position.positionUSD < 2000000) return;
   await Promise.all([sendTelegramAlert(position), sendTwitterAlert(position)]);
 }
 
