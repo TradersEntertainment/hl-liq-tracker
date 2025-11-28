@@ -580,7 +580,6 @@ function connectWebSocket() {
     ws.on('pong', () => {
       // Connection is alive
     });
-    });
     
     ws.on('message', (data) => {
       try {
