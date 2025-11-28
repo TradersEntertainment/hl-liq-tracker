@@ -174,17 +174,18 @@ async function getWalletAge(address) {
 // ALERTS
 // ============================================
 const sentAlerts = new Map();
+const sentNotifications = []; // Track sent notifications history
 const crypto = require('crypto');
 let oauthLib = null;
 try { oauthLib = require('oauth-1.0a'); } catch (e) { console.log('⚠️ oauth-1.0a not installed - Twitter disabled'); }
 
 async function sendTelegramAlert(position) {
   if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) return;
-  
+
   const alertKey = position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
   if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
-  
+
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
   const ageDays = position.walletAgeDays;
@@ -192,10 +193,10 @@ async function sendTelegramAlert(position) {
   const isNewWallet = ageDays !== null && ageDays < 7;
   const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
   const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
-  
+
   // Build message parts
   let lines = [];
-  
+
   // Header based on situation
   if (isPotentialVaultAttack) {
     lines.push('🚨🚨🚨 *HYPERVAULT ATTACK ALERT* 🚨🚨🚨');
@@ -208,20 +209,20 @@ async function sendTelegramAlert(position) {
     lines.push('⚠️ _Possible insider or exploit activity_');
     lines.push('');
   }
-  
+
   // Main position info with visual box
   const dirIcon = isLong ? '🟢' : '🔴';
   const dangerIcon = isCritical ? '💀' : '⚠️';
-  
+
   lines.push(dangerIcon + ' *' + position.coin + ' ' + position.direction + '* ' + dangerIcon);
   lines.push('━━━━━━━━━━━━━━━━');
-  
+
   // Whale history status
   if (position.allTimePnl !== null) {
     const pnlValue = position.allTimePnl;
     const pnlAbs = Math.abs(pnlValue);
     let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(2) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
-    
+
     if (position.isProfitableWhale) {
       lines.push('👑 *HISTORICALLY WINNER WHALE*');
       lines.push('📈 All-Time: *+' + pnlStr + '*');
@@ -231,18 +232,18 @@ async function sendTelegramAlert(position) {
     }
     lines.push('');
   }
-  
+
   // Position details
   lines.push('💎 Size: *$' + (position.positionUSD / 1000000).toFixed(2) + 'M*');
   lines.push('⚡ Leverage: *' + position.leverage + 'x*');
   lines.push('🎯 Distance to Liq: *' + position.distancePercent + '%*');
   lines.push('');
-  
+
   // Price info
   lines.push('📊 Entry: `$' + formatPriceCompact(position.entryPrice) + '`');
   lines.push('💀 Liquidation: `$' + formatPriceCompact(position.liqPrice) + '`');
   lines.push('');
-  
+
   // Wallet age
   if (isBrandNew) {
     lines.push('🆕 Wallet Age: *BRAND NEW* (<1 day)');
@@ -251,12 +252,12 @@ async function sendTelegramAlert(position) {
   } else if (ageDays !== null) {
     lines.push('🕐 Wallet Age: ' + formatWalletAge(ageDays));
   }
-  
+
   lines.push('');
   lines.push('🔗 [View Position on Hypurrscan](' + position.hypurrscanUrl + ')');
   lines.push('');
   lines.push('#Hyperliquid #' + position.coin + ' #WhaleAlert');
-  
+
   const message = lines.join('\n');
 
   try {
@@ -267,6 +268,17 @@ async function sendTelegramAlert(position) {
       disable_web_page_preview: true
     });
     sentAlerts.set(alertKey, Date.now());
+    sentNotifications.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+      platform: 'Telegram',
+      coin: position.coin,
+      direction: position.direction,
+      size: position.positionUSD,
+      distance: position.distancePercent,
+      address: position.userShort,
+      timestamp: Date.now()
+    });
+    if (sentNotifications.length > 50) sentNotifications.pop();
     console.log('📨 Telegram: ' + position.coin + ' | Age: ' + formatWalletAge(ageDays));
   } catch (error) {
     console.error('Telegram error:', error.response?.data?.description || error.message);
@@ -275,20 +287,20 @@ async function sendTelegramAlert(position) {
 
 async function sendTwitterAlert(position) {
   if (!CONFIG.TWITTER_API_KEY || !CONFIG.TWITTER_ACCESS_TOKEN || !oauthLib) return;
-  
+
   const alertKey = 'twitter-' + position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
   if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
-  
+
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
   const ageDays = position.walletAgeDays;
   const isBrandNew = ageDays !== null && ageDays === 0;
   const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
   const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
-  
+
   let lines = [];
-  
+
   // Header
   if (isPotentialVaultAttack) {
     lines.push('🚨 VAULT ATTACK ALERT 🚨');
@@ -297,13 +309,13 @@ async function sendTwitterAlert(position) {
   } else if (isBrandNew) {
     lines.push('👶🔥 FRESH WALLET');
   }
-  
+
   // Main info
   const dangerIcon = isCritical ? '💀' : '⚠️';
   const dirIcon = isLong ? '🟢' : '🔴';
   lines.push(dangerIcon + ' ' + position.coin + ' ' + position.direction);
   lines.push('');
-  
+
   // Whale status
   if (position.allTimePnl !== null) {
     const pnlAbs = Math.abs(position.allTimePnl);
@@ -314,7 +326,7 @@ async function sendTwitterAlert(position) {
       lines.push('🎲 Loser Whale (-' + pnlStr + ')');
     }
   }
-  
+
   // Position details
   lines.push(dirIcon + ' $' + (position.positionUSD / 1000000).toFixed(1) + 'M @ ' + position.leverage + 'x');
   lines.push('📊 Entry: $' + formatPriceCompact(position.entryPrice));
@@ -324,7 +336,7 @@ async function sendTwitterAlert(position) {
   lines.push(position.hypurrscanUrl);
   lines.push('');
   lines.push('#Hyperliquid #' + position.coin);
-  
+
   const tweet = lines.join('\n').slice(0, 280);
 
   try {
@@ -336,9 +348,20 @@ async function sendTwitterAlert(position) {
     const token = { key: CONFIG.TWITTER_ACCESS_TOKEN, secret: CONFIG.TWITTER_ACCESS_SECRET };
     const url = 'https://api.twitter.com/2/tweets';
     const authHeader = oauth.toHeader(oauth.authorize({ url, method: 'POST' }, token));
-    
+
     await axios.post(url, { text: tweet }, { headers: { 'Authorization': authHeader['Authorization'], 'Content-Type': 'application/json' } });
     sentAlerts.set(alertKey, Date.now());
+    sentNotifications.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+      platform: 'Twitter',
+      coin: position.coin,
+      direction: position.direction,
+      size: position.positionUSD,
+      distance: position.distancePercent,
+      address: position.userShort,
+      timestamp: Date.now()
+    });
+    if (sentNotifications.length > 50) sentNotifications.pop();
     console.log('🐦 Twitter: ' + position.coin);
   } catch (error) {
     console.error('Twitter error:', error.response?.status, error.response?.data?.detail || error.message);
@@ -346,7 +369,9 @@ async function sendTwitterAlert(position) {
 }
 
 async function sendAlerts(position) {
-  if (position.dangerLevel !== 'CRITICAL' && (position.walletAgeDays === null || position.walletAgeDays > 7)) return;
+  // Bildirim koşulları: Likidasyona %10'dan yakın VE pozisyon ≥ $2M
+  if (position.distanceToLiq >= CONFIG.DANGER_THRESHOLD_10) return;
+  if (position.positionUSD < 2000000) return;
   await Promise.all([sendTelegramAlert(position), sendTwitterAlert(position)]);
 }
 
@@ -999,6 +1024,16 @@ app.post('/api/add-address', async (req, res) => {
   knownWhaleAddresses.add(address.toLowerCase());
   await checkAddressImmediately(address.toLowerCase(), null, 0);
   res.json({ success: true });
+});
+
+app.get('/api/sent-notifications', (req, res) => {
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  const recentCount = sentNotifications.filter(n => n.timestamp >= oneHourAgo).length;
+  res.json({
+    total: sentNotifications.length,
+    recent: recentCount,
+    notifications: sentNotifications.slice(0, 30)
+  });
 });
 
 app.post('/api/test-telegram', async (req, res) => {
