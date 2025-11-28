@@ -197,19 +197,24 @@
 
     .grid-layout {
       display: grid;
-      grid-template-columns: 1fr 1fr 340px;
+      grid-template-columns: 1fr 1fr;
       gap: 1rem;
       align-items: start;
     }
 
-    @media (max-width: 1400px) {
-      .grid-layout { grid-template-columns: 1fr 1fr; }
-      .liq-panel { grid-column: span 2; }
-    }
-
     @media (max-width: 900px) {
       .grid-layout { grid-template-columns: 1fr; }
-      .liq-panel { grid-column: span 1; }
+    }
+
+    .side-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      grid-column: span 2;
+    }
+
+    @media (max-width: 1400px) {
+      .side-panels { grid-template-columns: 1fr; }
     }
 
     .position-column {
@@ -827,14 +832,15 @@
     }
 
     .liq-pos-coin {
-      font-weight: 600;
-      font-size: 0.9rem;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.02em;
     }
 
     .liq-pos-distance {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-      font-weight: 600;
+      font-size: 0.95rem;
+      font-weight: 700;
     }
 
     .liq-pos-distance.critical { color: var(--red); }
@@ -854,24 +860,29 @@
 
     .liq-pos-field-label {
       color: var(--text-muted);
-      font-size: 0.6rem;
+      font-size: 0.65rem;
       text-transform: uppercase;
+      letter-spacing: 0.03em;
     }
 
     .liq-pos-field-value {
       font-family: 'JetBrains Mono', monospace;
-      font-weight: 500;
+      font-weight: 600;
+      font-size: 0.8rem;
+      margin-top: 0.1rem;
     }
 
     .liq-pos-address {
-      font-size: 0.65rem;
-      color: var(--text-muted);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
       margin-top: 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
     }
 
     .liq-pos-address a {
-      color: var(--blue);
+      color: var(--cyan);
       text-decoration: none;
+      font-weight: 500;
     }
 
     .liq-pos-address a:hover {
@@ -1013,7 +1024,6 @@
       <div class="position-column">
         <div class="column-header long">
           <div class="column-title long">🟢 Longs at Risk</div>
-          <div class="column-meta"><strong id="longsTotal">$0</strong> · <span id="longsCount">0</span> positions</div>
         </div>
         <div id="longsList"><div class="empty-state">No longs at risk</div></div>
       </div>
@@ -1021,13 +1031,32 @@
       <div class="position-column">
         <div class="column-header short">
           <div class="column-title short">🔴 Shorts at Risk</div>
-          <div class="column-meta"><strong id="shortsTotal">$0</strong> · <span id="shortsCount">0</span> positions</div>
         </div>
         <div id="shortsList"><div class="empty-state">No shorts at risk</div></div>
       </div>
 
-      <div class="liq-panel">
-        <div class="liq-header">💀 Recent Liquidations</div>
+      <div class="side-panels">
+        <!-- Sent Notifications Panel -->
+        <div class="liq-panel">
+          <div class="liq-header">📨 Sent Notifications</div>
+          <div class="liq-stats">
+            <div class="liq-stat">
+              <div class="liq-stat-label">Total Sent</div>
+              <div class="liq-stat-value" id="sentNotifsCount" style="color: var(--blue);">0</div>
+            </div>
+            <div class="liq-stat">
+              <div class="liq-stat-label">Last 1h</div>
+              <div class="liq-stat-value" id="sentNotifsRecent" style="color: var(--cyan);">0</div>
+            </div>
+          </div>
+          <div class="liq-list" id="sentNotifsList" style="max-height: 400px;">
+            <div class="empty-state">No notifications sent yet</div>
+          </div>
+        </div>
+
+        <!-- Recent Liquidations Panel -->
+        <div class="liq-panel">
+          <div class="liq-header">💀 Recent Liquidations</div>
         <div class="liq-stats">
           <div class="liq-stat">
             <div class="liq-stat-label">Longs Liq'd</div>
@@ -1048,6 +1077,7 @@
         <div class="whale-section">
           <div class="whale-header">🐋 Whale Liquidations ($500K+)</div>
           <div class="whale-list" id="whaleLiqList"><div class="empty-state">No whale liquidations yet</div></div>
+        </div>
         </div>
       </div>
     </div>
@@ -1213,6 +1243,11 @@
       return await res.json();
     }
 
+    async function fetchSentNotifications() {
+      const res = await fetch(`${API_BASE}/api/sent-notifications`);
+      return await res.json();
+    }
+
     function renderPositionCard(pos, idx) {
       const isProfitable = pos.isProfitableWhale;
       const allTimePnl = pos.allTimePnl;
@@ -1362,11 +1397,6 @@
         shorts = shorts.filter(p => p.coin === coinFilter);
       }
 
-      document.getElementById('longsTotal').textContent = formatUSD(data.longsAtRisk || 0);
-      document.getElementById('shortsTotal').textContent = formatUSD(data.shortsAtRisk || 0);
-      document.getElementById('longsCount').textContent = longs.length;
-      document.getElementById('shortsCount').textContent = shorts.length;
-
       // Render coin stats header for longs
       let longsHtml = '';
       if (data.longCoinStats && Object.keys(data.longCoinStats).length > 0) {
@@ -1457,6 +1487,40 @@
           </div>
         </div>
       `).join('');
+    }
+
+    function renderSentNotifications(data) {
+      document.getElementById('sentNotifsCount').textContent = data.total || 0;
+      document.getElementById('sentNotifsRecent').textContent = data.recent || 0;
+
+      const list = document.getElementById('sentNotifsList');
+      if (!data.notifications || data.notifications.length === 0) {
+        list.innerHTML = '<div class="empty-state">No notifications sent yet</div>';
+        return;
+      }
+
+      list.innerHTML = data.notifications.map(notif => `
+        <div class="liq-item">
+          <div class="liq-side ${notif.direction.toLowerCase()}"></div>
+          <div class="liq-info">
+            <div class="liq-coin">${notif.coin} <span class="liq-badge ${notif.direction.toLowerCase()}">${notif.direction}</span></div>
+            <div class="liq-price">${notif.platform} · ${notif.distance}% away</div>
+          </div>
+          <div class="liq-value">
+            <div class="liq-amount">${formatUSD(notif.size)}</div>
+            <div class="liq-time">${timeAgo(notif.timestamp)} ago</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function refreshSentNotifications() {
+      try {
+        const data = await fetchSentNotifications();
+        renderSentNotifications(data);
+      } catch (err) {
+        console.error('Sent notifs refresh error:', err);
+      }
     }
 
     async function refreshData() {
@@ -1627,9 +1691,11 @@
 
     refreshData();
     refreshLiquidations();
+    refreshSentNotifications();
     fetchLiquidatable();
     setInterval(refreshData, 30000);
     setInterval(refreshLiquidations, 5000);
+    setInterval(refreshSentNotifications, 10000);
     setInterval(fetchLiquidatable, 60000);
   </script>
 </body>

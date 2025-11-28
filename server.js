@@ -174,6 +174,7 @@ async function getWalletAge(address) {
 // ALERTS
 // ============================================
 const sentAlerts = new Map();
+const sentNotifications = []; // Track sent notifications history
 const crypto = require('crypto');
 let oauthLib = null;
 try { oauthLib = require('oauth-1.0a'); } catch (e) { console.log('⚠️ oauth-1.0a not installed - Twitter disabled'); }
@@ -267,6 +268,17 @@ async function sendTelegramAlert(position) {
       disable_web_page_preview: true
     });
     sentAlerts.set(alertKey, Date.now());
+    sentNotifications.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+      platform: 'Telegram',
+      coin: position.coin,
+      direction: position.direction,
+      size: position.positionUSD,
+      distance: position.distancePercent,
+      address: position.userShort,
+      timestamp: Date.now()
+    });
+    if (sentNotifications.length > 50) sentNotifications.pop();
     console.log('📨 Telegram: ' + position.coin + ' | Age: ' + formatWalletAge(ageDays));
   } catch (error) {
     console.error('Telegram error:', error.response?.data?.description || error.message);
@@ -339,6 +351,17 @@ async function sendTwitterAlert(position) {
 
     await axios.post(url, { text: tweet }, { headers: { 'Authorization': authHeader['Authorization'], 'Content-Type': 'application/json' } });
     sentAlerts.set(alertKey, Date.now());
+    sentNotifications.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+      platform: 'Twitter',
+      coin: position.coin,
+      direction: position.direction,
+      size: position.positionUSD,
+      distance: position.distancePercent,
+      address: position.userShort,
+      timestamp: Date.now()
+    });
+    if (sentNotifications.length > 50) sentNotifications.pop();
     console.log('🐦 Twitter: ' + position.coin);
   } catch (error) {
     console.error('Twitter error:', error.response?.status, error.response?.data?.detail || error.message);
@@ -1001,6 +1024,16 @@ app.post('/api/add-address', async (req, res) => {
   knownWhaleAddresses.add(address.toLowerCase());
   await checkAddressImmediately(address.toLowerCase(), null, 0);
   res.json({ success: true });
+});
+
+app.get('/api/sent-notifications', (req, res) => {
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  const recentCount = sentNotifications.filter(n => n.timestamp >= oneHourAgo).length;
+  res.json({
+    total: sentNotifications.length,
+    recent: recentCount,
+    notifications: sentNotifications.slice(0, 30)
+  });
 });
 
 app.post('/api/test-telegram', async (req, res) => {
