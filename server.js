@@ -180,11 +180,17 @@ let oauthLib = null;
 try { oauthLib = require('oauth-1.0a'); } catch (e) { console.log('⚠️ oauth-1.0a not installed - Twitter disabled'); }
 
 async function sendTelegramAlert(position) {
-  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) return;
+  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) {
+    console.log('⚠️ Telegram not configured');
+    return;
+  }
   
   const alertKey = position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
-  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
+  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) {
+    console.log('⏳ Telegram cooldown active for ' + alertKey + ' (' + Math.round((CONFIG.ALERT_COOLDOWN - (Date.now() - lastAlert))/1000) + 's remaining)');
+    return;
+  }
   
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
@@ -279,7 +285,10 @@ async function sendTwitterAlert(position) {
   
   const alertKey = 'twitter-' + position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
-  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
+  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) {
+    console.log('⏳ Twitter cooldown active for ' + alertKey);
+    return;
+  }
   
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
@@ -347,6 +356,12 @@ async function sendTwitterAlert(position) {
 }
 
 async function sendAlerts(position) {
+  // Only alert for $2M+ positions
+  if (position.positionUSD < CONFIG.MIN_POSITION_USD) {
+    console.log('ℹ️ Skipping alert - position too small: $' + (position.positionUSD/1000000).toFixed(2) + 'M < $' + (CONFIG.MIN_POSITION_USD/1000000) + 'M');
+    return;
+  }
+  
   // Send alerts for:
   // 1. CRITICAL positions (any wallet)
   // 2. WARNING positions (any wallet)
@@ -356,7 +371,12 @@ async function sendAlerts(position) {
     position.dangerLevel === 'WARNING' ||
     (position.walletAgeDays !== null && position.walletAgeDays < 7);
   
-  if (!shouldAlert) return;
+  if (!shouldAlert) {
+    console.log('ℹ️ Skipping alert - not critical/warning and wallet > 7 days');
+    return;
+  }
+  
+  console.log('🔔 SENDING ALERT: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M | ' + position.dangerLevel);
   
   await Promise.all([sendTelegramAlert(position), sendTwitterAlert(position)]);
 }
@@ -575,8 +595,10 @@ function processTradesForDiscovery(trades) {
 
 async function checkAddressImmediately(address, tradeCoin, tradeValue) {
   try {
+    console.log('🔎 Checking address: ' + address.slice(0, 10) + '... for at-risk positions');
     const state = await getUserState(address);
     if (state && state.assetPositions && state.assetPositions.length > 0) {
+      console.log('📊 Found ' + state.assetPositions.length + ' positions for ' + address.slice(0, 10) + '...');
       const [allTimePnl, walletAgeDays] = await Promise.all([getCachedAllTimePnl(address), getWalletAge(address)]);
       let positionsFound = 0;
       for (const assetPos of state.assetPositions) {
@@ -590,17 +612,24 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
             processed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
           }
           const existingIdx = trackedPositions.findIndex(p => p.user === address && p.coin === pos.coin);
-          if (existingIdx >= 0) trackedPositions[existingIdx] = processed;
-          else trackedPositions.unshift(processed);
-          console.log('🚨 DETECT: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | Age: ' + formatWalletAge(walletAgeDays));
-          if (existingIdx < 0) sendAlerts(processed);
+          if (existingIdx >= 0) {
+            trackedPositions[existingIdx] = processed;
+            console.log('🔄 Updated: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | $' + (processed.positionUSD/1000000).toFixed(2) + 'M | ' + processed.distancePercent + '%');
+          } else {
+            trackedPositions.unshift(processed);
+            console.log('🚨 NEW POSITION: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | $' + (processed.positionUSD/1000000).toFixed(2) + 'M | ' + processed.distancePercent + '% | Age: ' + formatWalletAge(walletAgeDays));
+            // Send alert for new position
+            sendAlerts(processed);
+          }
           positionsFound++;
         }
       }
       trackedPositions.sort((a, b) => a.distanceToLiq - b.distanceToLiq);
       if (positionsFound === 0) {
-        console.log('ℹ️ ' + address.slice(0, 10) + '... has no at-risk positions');
+        console.log('ℹ️ ' + address.slice(0, 10) + '... has no at-risk positions (all positions > 15% from liq or < $2M)');
       }
+    } else {
+      console.log('ℹ️ ' + address.slice(0, 10) + '... has no open positions');
     }
   } catch (err) {
     console.error('❌ checkAddressImmediately error for ' + address.slice(0, 10) + '...:', err.message);
