@@ -500,6 +500,9 @@ let wsReconnectAttempts = 0;
 let lastTradeReceived = 0;
 let totalTradesReceived = 0;
 
+// HLP Vault address - receives all liquidations
+const HLP_VAULT = '0xdfc24b077bc1425ad1dea75bcb6f8158e10df303';
+
 function connectWebSocket() {
   try {
     ws = new WebSocket(CONFIG.HYPERLIQUID_WS);
@@ -507,28 +510,44 @@ function connectWebSocket() {
     ws.on('open', () => {
       console.log('✅ WebSocket connected');
       wsReconnectAttempts = 0;
-      // Subscribe to ALL trades (coin: null means all coins)
+      // Subscribe to ALL trades
       ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades' } }));
+      // Subscribe to HLP vault userEvents - this gives us REAL liquidation data!
+      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
+      // Also subscribe to HLP fills for backup liquidation detection
+      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
     });
     
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data);
         if (msg.channel === 'subscriptionResponse') {
-          console.log('✅ Subscribed to trades stream:', JSON.stringify(msg.data));
+          console.log('✅ Subscribed:', JSON.stringify(msg.data?.subscription?.type || msg.data));
         }
+        
+        // Handle trades for whale discovery
         if (msg.channel === 'trades' && msg.data) {
           if (Array.isArray(msg.data) && msg.data.length > 0) {
             lastTradeReceived = Date.now();
             totalTradesReceived += msg.data.length;
 
-            // Debug mode: log first trade sample
             if (CONFIG.DEBUG_MODE && totalTradesReceived <= 5) {
               console.log('🔍 DEBUG - Sample trade:', JSON.stringify(msg.data[0], null, 2));
             }
 
             processTradesForDiscovery(msg.data);
-            processLiquidations(msg.data);
+          }
+        }
+        
+        // Handle HLP userEvents - contains real liquidation events!
+        if (msg.channel === 'userEvents' && msg.data) {
+          processHlpUserEvents(msg.data);
+        }
+        
+        // Handle HLP fills - backup liquidation detection
+        if (msg.channel === 'userFills' && msg.data) {
+          if (msg.data.fills && Array.isArray(msg.data.fills)) {
+            processHlpFills(msg.data.fills);
           }
         }
       } catch (e) {
@@ -734,7 +753,146 @@ async function fetchRecentLiquidations() {
   }
 }
 
-function processLiquidations(trades) {
+// Process HLP userEvents - contains REAL liquidation events from the protocol
+function processHlpUserEvents(data) {
+  try {
+    // Handle both single event and array
+    const events = Array.isArray(data) ? data : [data];
+    
+    for (const event of events) {
+      // Skip snapshot data
+      if (event.isSnapshot) continue;
+      
+      // Check for liquidation event
+      if (event.liquidation) {
+        const liq = event.liquidation;
+        const value = Math.abs(parseFloat(liq.liquidated_ntl_pos || 0));
+        
+        if (value < 10000) continue; // Skip tiny liquidations
+        
+        const liqData = {
+          id: liq.lid || Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+          coin: 'UNKNOWN', // Will be enriched from fills
+          side: parseFloat(liq.liquidated_ntl_pos) > 0 ? 'LONG' : 'SHORT',
+          price: 0,
+          size: 0,
+          value: value,
+          timestamp: Date.now(),
+          liquidatedUser: liq.liquidated_user,
+          accountValue: parseFloat(liq.liquidated_account_value || 0),
+          source: 'userEvents'
+        };
+        
+        // Check duplicate
+        const isDuplicate = recentLiquidations.some(l => 
+          l.id === liqData.id || 
+          (l.liquidatedUser === liqData.liquidatedUser && Math.abs(l.timestamp - liqData.timestamp) < 5000)
+        );
+        
+        if (!isDuplicate) {
+          recentLiquidations.unshift(liqData);
+          if (recentLiquidations.length > MAX_LIQUIDATIONS) {
+            recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
+          }
+          
+          if (value >= 500000) {
+            recentWhaleLiquidations.unshift(liqData);
+            if (recentWhaleLiquidations.length > 50) {
+              recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
+            }
+            console.log('🐋💀 WHALE LIQ (userEvents): ' + liqData.side + ' | $' + (value/1000000).toFixed(2) + 'M | User: ' + liqData.liquidatedUser?.slice(0,10));
+          } else if (value >= 100000) {
+            console.log('💀 LIQ (userEvents): ' + liqData.side + ' | $' + (value/1000).toFixed(0) + 'K');
+          }
+        }
+      }
+      
+      // Also check fills within userEvents for liquidation info
+      if (event.fills && Array.isArray(event.fills)) {
+        processHlpFills(event.fills);
+      }
+    }
+  } catch (err) {
+    console.error('❌ processHlpUserEvents error:', err.message);
+  }
+}
+
+// Process HLP fills - contains liquidation details with coin info
+function processHlpFills(fills) {
+  if (!fills || !Array.isArray(fills)) return;
+  
+  let liqCount = 0;
+  for (const fill of fills) {
+    try {
+      // Skip snapshot data
+      if (fill.isSnapshot) continue;
+      
+      // Check if this fill is a liquidation
+      const hasLiquidation = fill.liquidation && fill.liquidation.liquidatedUser;
+      const isLiqDir = fill.dir && fill.dir.toLowerCase().includes('liq');
+      
+      if (!hasLiquidation && !isLiqDir) continue;
+      
+      const sz = Math.abs(parseFloat(fill.sz || 0));
+      const px = parseFloat(fill.px || 0);
+      const value = sz * px;
+      
+      if (value < 10000) continue;
+      
+      // Determine side: if HLP buys (side=B), a short was liquidated
+      // If HLP sells (side=A), a long was liquidated
+      const side = fill.side === 'B' ? 'SHORT' : 'LONG';
+      
+      const liqData = {
+        id: fill.hash || Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        coin: fill.coin,
+        side: side,
+        price: px,
+        size: sz,
+        value: value,
+        timestamp: fill.time || Date.now(),
+        hash: fill.hash,
+        liquidatedUser: fill.liquidation?.liquidatedUser,
+        markPx: fill.liquidation?.markPx,
+        method: fill.liquidation?.method,
+        source: 'hlpFills'
+      };
+      
+      // Check duplicate by hash or similar params
+      const isDuplicate = recentLiquidations.some(l => 
+        (l.hash && l.hash === liqData.hash) ||
+        (l.coin === liqData.coin && Math.abs(l.value - liqData.value) < 1000 && Math.abs(l.timestamp - liqData.timestamp) < 3000)
+      );
+      
+      if (!isDuplicate) {
+        recentLiquidations.unshift(liqData);
+        if (recentLiquidations.length > MAX_LIQUIDATIONS) {
+          recentLiquidations = recentLiquidations.slice(0, MAX_LIQUIDATIONS);
+        }
+        
+        if (value >= 500000) {
+          recentWhaleLiquidations.unshift(liqData);
+          if (recentWhaleLiquidations.length > 50) {
+            recentWhaleLiquidations = recentWhaleLiquidations.slice(0, 50);
+          }
+          console.log('🐋💀 WHALE LIQ: ' + liqData.coin + ' ' + side + ' | $' + (value/1000000).toFixed(2) + 'M');
+        } else if (value >= 100000) {
+          console.log('💀 LIQ: ' + liqData.coin + ' ' + side + ' | $' + (value/1000).toFixed(0) + 'K');
+        }
+        liqCount++;
+      }
+    } catch (err) {
+      console.error('❌ Error processing HLP fill:', err.message);
+    }
+  }
+  
+  if (liqCount > 0) {
+    console.log('💀 Detected ' + liqCount + ' liquidations from HLP fills');
+  }
+}
+
+// DEPRECATED: Old unreliable method - keeping for reference
+function processLiquidationsOld(trades) {
   if (!trades || !Array.isArray(trades)) return;
 
   let liqCount = 0;
