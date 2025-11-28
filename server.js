@@ -536,23 +536,50 @@ let ws = null;
 let wsReconnectAttempts = 0;
 let lastTradeReceived = 0;
 let totalTradesReceived = 0;
+let wsPingInterval = null;
 
 // HLP Vault address - receives all liquidations
 const HLP_VAULT = '0xdfc24b077bc1425ad1dea75bcb6f8158e10df303';
 
+// Top coins to monitor for whale trades
+const MONITORED_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'SUI', 'PEPE', 'WIF', 'BONK', 'HYPE', 'AVAX', 'LINK', 'ARB', 'OP', 'INJ', 'TIA', 'SEI', 'APT', 'NEAR', 'FTM'];
+
 function connectWebSocket() {
   try {
+    // Clear any existing ping interval
+    if (wsPingInterval) {
+      clearInterval(wsPingInterval);
+      wsPingInterval = null;
+    }
+    
     ws = new WebSocket(CONFIG.HYPERLIQUID_WS);
     
     ws.on('open', () => {
       console.log('✅ WebSocket connected');
       wsReconnectAttempts = 0;
-      // Subscribe to ALL trades
-      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades' } }));
+      
+      // Subscribe to trades for top coins (whale discovery)
+      for (const coin of MONITORED_COINS) {
+        ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: coin } }));
+      }
+      console.log('📡 Subscribed to trades for ' + MONITORED_COINS.length + ' coins');
+      
       // Subscribe to HLP vault userEvents - this gives us REAL liquidation data!
       ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userEvents', user: HLP_VAULT } }));
       // Also subscribe to HLP fills for backup liquidation detection
       ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'userFills', user: HLP_VAULT } }));
+      
+      // Start ping interval to keep connection alive
+      wsPingInterval = setInterval(() => {
+        if (ws && ws.readyState === 1) {
+          ws.ping();
+        }
+      }, 30000);
+    });
+    
+    ws.on('pong', () => {
+      // Connection is alive
+    });
     });
     
     ws.on('message', (data) => {
