@@ -171,6 +171,10 @@ async function getWalletAge(address) {
   } catch (err) { return null; }
 }
 
+// Rate limiting for position open time API calls
+let lastPositionOpenTimeCall = 0;
+const POSITION_OPEN_TIME_RATE_LIMIT = 150; // ms between calls
+
 async function getPositionOpenTime(address, coin, entryPrice) {
   const cacheKey = address.toLowerCase() + '-' + coin;
 
@@ -178,34 +182,59 @@ async function getPositionOpenTime(address, coin, entryPrice) {
   const cached = positionOpenTimeCache.get(cacheKey);
   if (cached) return cached;
 
-  try {
-    // Get recent fills for this user
-    const response = await axios.post(CONFIG.HYPERLIQUID_API, {
-      type: 'userFillsByTime',
-      user: address,
-      startTime: Date.now() - (30 * 24 * 60 * 60 * 1000), // Last 30 days
-      endTime: Date.now()
-    });
+  // Rate limiting
+  const now = Date.now();
+  const timeSinceLastCall = now - lastPositionOpenTimeCall;
+  if (timeSinceLastCall < POSITION_OPEN_TIME_RATE_LIMIT) {
+    await new Promise(resolve => setTimeout(resolve, POSITION_OPEN_TIME_RATE_LIMIT - timeSinceLastCall));
+  }
+  lastPositionOpenTimeCall = Date.now();
 
-    if (response.data && Array.isArray(response.data)) {
-      // Find fills for this coin near entry price (within 5%)
-      const relevantFills = response.data
-        .filter(fill => fill.coin === coin)
-        .filter(fill => {
-          const fillPx = parseFloat(fill.px);
-          const priceDiff = Math.abs(fillPx - entryPrice) / entryPrice;
-          return priceDiff < 0.05; // Within 5% of entry price
-        })
-        .sort((a, b) => a.time - b.time); // Oldest first
+  // Retry logic for 429 errors
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // Get recent fills for this user
+      const response = await axios.post(CONFIG.HYPERLIQUID_API, {
+        type: 'userFillsByTime',
+        user: address,
+        startTime: Date.now() - (30 * 24 * 60 * 60 * 1000), // Last 30 days
+        endTime: Date.now()
+      });
 
-      if (relevantFills.length > 0) {
-        const openTime = relevantFills[0].time;
-        positionOpenTimeCache.set(cacheKey, openTime);
-        return openTime;
+      if (response.data && Array.isArray(response.data)) {
+        // Find fills for this coin near entry price (within 5%)
+        const relevantFills = response.data
+          .filter(fill => fill.coin === coin)
+          .filter(fill => {
+            const fillPx = parseFloat(fill.px);
+            const priceDiff = Math.abs(fillPx - entryPrice) / entryPrice;
+            return priceDiff < 0.05; // Within 5% of entry price
+          })
+          .sort((a, b) => a.time - b.time); // Oldest first
+
+        if (relevantFills.length > 0) {
+          const openTime = relevantFills[0].time;
+          positionOpenTimeCache.set(cacheKey, openTime);
+          return openTime;
+        }
       }
+
+      // No fills found, cache current time
+      const fallbackTime = Date.now();
+      positionOpenTimeCache.set(cacheKey, fallbackTime);
+      return fallbackTime;
+
+    } catch (err) {
+      if (err.response && err.response.status === 429 && attempt < 2) {
+        // Rate limited, wait and retry
+        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s
+        console.log(`⏳ Rate limited, retrying in ${waitTime}ms (attempt ${attempt + 1}/3)`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      console.error('Position open time fetch error:', err.message);
+      break;
     }
-  } catch (err) {
-    console.error('Position open time fetch error:', err.message);
   }
 
   // Fallback: use current time
@@ -528,16 +557,25 @@ function processPosition(userAddress, position, currentPrice, accountData = null
 // ============================================
 let ws = null;
 let wsReconnectAttempts = 0;
+let wsPingInterval = null;
 
 function connectWebSocket() {
   try {
     ws = new WebSocket(CONFIG.HYPERLIQUID_WS);
-    
+
     ws.on('open', () => {
       console.log('✅ WebSocket connected');
       wsReconnectAttempts = 0;
       // Subscribe to ALL trades (coin: null means all coins)
       ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades' } }));
+
+      // Keep-alive: ping every 30 seconds
+      if (wsPingInterval) clearInterval(wsPingInterval);
+      wsPingInterval = setInterval(() => {
+        if (ws && ws.readyState === 1) {
+          ws.ping();
+        }
+      }, 30000);
     });
     
     ws.on('message', (data) => {
@@ -561,10 +599,18 @@ function connectWebSocket() {
     
     ws.on('close', () => {
       console.log('⚠️ WebSocket closed, reconnecting in 5s...');
+      if (wsPingInterval) {
+        clearInterval(wsPingInterval);
+        wsPingInterval = null;
+      }
       wsReconnectAttempts++;
       setTimeout(connectWebSocket, Math.min(5000 * wsReconnectAttempts, 30000));
     });
     
+    ws.on('pong', () => {
+      // Keep-alive pong received
+    });
+
     ws.on('error', (err) => {
       console.error('WebSocket error:', err.message);
     });
