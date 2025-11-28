@@ -347,27 +347,23 @@ async function sendTwitterAlert(position) {
 }
 
 async function sendAlerts(position) {
-  // Only alert for $2M+ positions
+  // Only alert for $2M+ positions within 10% of liquidation
   if (position.positionUSD < CONFIG.MIN_POSITION_USD) {
     return;
   }
+  
+  const distancePercent = parseFloat(position.distancePercent);
+  if (distancePercent > 10) {
+    return;
+  }
+  
+  // If we reach here: $2M+ AND within 10% of liq = ALWAYS ALERT
   
   // Check for potential HyperVault attack (shitcoin + large position)
   const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 2000000;
   const isLargeShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 5000000;
   const isMassiveVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
-  
-  // ALWAYS alert for potential vault attacks (shitcoin + $2M+)
-  // Also alert for CRITICAL positions or brand new wallets
   const isBrandNew = position.walletAgeDays !== null && position.walletAgeDays === 0;
-  const shouldAlert = 
-    isPotentialVaultAttack ||  // Shitcoin $2M+ = ALWAYS alert
-    position.dangerLevel === 'CRITICAL' || 
-    isBrandNew;
-  
-  if (!shouldAlert) {
-    return;
-  }
   
   // Log with appropriate urgency
   if (isMassiveVaultAttack) {
