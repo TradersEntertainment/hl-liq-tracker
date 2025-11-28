@@ -28,7 +28,7 @@ const CONFIG = {
   TWITTER_API_SECRET: process.env.TWITTER_API_SECRET,
   TWITTER_ACCESS_TOKEN: process.env.TWITTER_ACCESS_TOKEN,
   TWITTER_ACCESS_SECRET: process.env.TWITTER_ACCESS_SECRET,
-  ALERT_COOLDOWN: 5 * 60 * 1000,
+  ALERT_COOLDOWN: 30 * 60 * 1000, // 30 minutes cooldown per position
   DATABASE_URL: process.env.DATABASE_URL,
   DEBUG_MODE: process.env.DEBUG_MODE === 'true',
 };
@@ -180,17 +180,11 @@ let oauthLib = null;
 try { oauthLib = require('oauth-1.0a'); } catch (e) { console.log('⚠️ oauth-1.0a not installed - Twitter disabled'); }
 
 async function sendTelegramAlert(position) {
-  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) {
-    console.log('⚠️ Telegram not configured');
-    return;
-  }
+  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) return;
   
   const alertKey = position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
-  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) {
-    console.log('⏳ Telegram cooldown active for ' + alertKey + ' (' + Math.round((CONFIG.ALERT_COOLDOWN - (Date.now() - lastAlert))/1000) + 's remaining)');
-    return;
-  }
+  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
   
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
@@ -285,10 +279,7 @@ async function sendTwitterAlert(position) {
   
   const alertKey = 'twitter-' + position.user + '-' + position.coin;
   const lastAlert = sentAlerts.get(alertKey);
-  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) {
-    console.log('⏳ Twitter cooldown active for ' + alertKey);
-    return;
-  }
+  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
   
   const isLong = position.direction === 'LONG';
   const isCritical = position.dangerLevel === 'CRITICAL';
@@ -358,27 +349,42 @@ async function sendTwitterAlert(position) {
 async function sendAlerts(position) {
   // Only alert for $2M+ positions
   if (position.positionUSD < CONFIG.MIN_POSITION_USD) {
-    console.log('ℹ️ Skipping alert - position too small: $' + (position.positionUSD/1000000).toFixed(2) + 'M < $' + (CONFIG.MIN_POSITION_USD/1000000) + 'M');
     return;
   }
   
-  // Send alerts for:
-  // 1. CRITICAL positions (any wallet)
-  // 2. WARNING positions (any wallet)
-  // 3. New wallets (<7 days) with any danger level
+  // Check for potential HyperVault attack (shitcoin + large position)
+  const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 2000000;
+  const isLargeShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 5000000;
+  const isMassiveVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
+  
+  // ALWAYS alert for potential vault attacks (shitcoin + $2M+)
+  // Also alert for CRITICAL positions or brand new wallets
+  const isBrandNew = position.walletAgeDays !== null && position.walletAgeDays === 0;
   const shouldAlert = 
+    isPotentialVaultAttack ||  // Shitcoin $2M+ = ALWAYS alert
     position.dangerLevel === 'CRITICAL' || 
-    position.dangerLevel === 'WARNING' ||
-    (position.walletAgeDays !== null && position.walletAgeDays < 7);
+    isBrandNew;
   
   if (!shouldAlert) {
-    console.log('ℹ️ Skipping alert - not critical/warning and wallet > 7 days');
     return;
   }
   
-  console.log('🔔 SENDING ALERT: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M | ' + position.dangerLevel);
+  // Log with appropriate urgency
+  if (isMassiveVaultAttack) {
+    console.log('🚨🚨🚨 VAULT ATTACK ALERT: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M');
+  } else if (isLargeShitcoinBet) {
+    console.log('🎰 DEGEN WHALE: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M');
+  } else if (isPotentialVaultAttack) {
+    console.log('⚠️ SHITCOIN WHALE: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M');
+  } else {
+    console.log('🔔 SENDING ALERT: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M | ' + position.dangerLevel);
+  }
   
-  await Promise.all([sendTelegramAlert(position), sendTwitterAlert(position)]);
+  // Send Telegram first (more reliable), then Twitter with delay
+  await sendTelegramAlert(position);
+  
+  // Delay Twitter to avoid rate limits
+  setTimeout(() => sendTwitterAlert(position), 5000);
 }
 
 // ============================================
@@ -446,7 +452,12 @@ function processPosition(userAddress, position, currentPrice, accountData = null
   const isLong = szi > 0;
   const distanceToLiq = isLong ? (markPrice - liqPx) / markPrice : (liqPx - markPrice) / markPrice;
   
-  if (distanceToLiq > 0.15 || distanceToLiq < 0) return null;
+  // For shitcoins with $2M+ positions, allow up to 15% distance (potential vault attacks)
+  // For top coins, only track up to 10% distance
+  const isShitcoinLargePosition = isShitcoin(coin) && positionUSD >= 2000000;
+  const maxDistance = isShitcoinLargePosition ? 0.15 : 0.10;
+  
+  if (distanceToLiq > maxDistance || distanceToLiq < 0) return null;
   
   const dangerLevel = distanceToLiq <= CONFIG.DANGER_THRESHOLD_5 ? 'CRITICAL' : distanceToLiq <= CONFIG.DANGER_THRESHOLD_10 ? 'WARNING' : 'WATCH';
   
@@ -593,14 +604,15 @@ function processTradesForDiscovery(trades) {
   }
 }
 
+// Track known positions to detect truly new ones
+const knownPositionKeys = new Set();
+
 async function checkAddressImmediately(address, tradeCoin, tradeValue) {
   try {
-    console.log('🔎 Checking address: ' + address.slice(0, 10) + '... for at-risk positions');
     const state = await getUserState(address);
     if (state && state.assetPositions && state.assetPositions.length > 0) {
-      console.log('📊 Found ' + state.assetPositions.length + ' positions for ' + address.slice(0, 10) + '...');
       const [allTimePnl, walletAgeDays] = await Promise.all([getCachedAllTimePnl(address), getWalletAge(address)]);
-      let positionsFound = 0;
+      
       for (const assetPos of state.assetPositions) {
         const pos = assetPos.position;
         const processed = processPosition(address, pos, allMids[pos.coin], state);
@@ -611,28 +623,38 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
             processed.isProfitableWhale = allTimePnl > 0;
             processed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
           }
+          
+          const key = address + '-' + pos.coin;
           const existingIdx = trackedPositions.findIndex(p => p.user === address && p.coin === pos.coin);
+          
+          // Check if this is a potential vault attack (shitcoin + large position)
+          const isPotentialVaultAttack = isShitcoin(pos.coin) && processed.positionUSD >= 2000000;
+          
           if (existingIdx >= 0) {
+            // Update existing position - NO alert
             trackedPositions[existingIdx] = processed;
-            console.log('🔄 Updated: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | $' + (processed.positionUSD/1000000).toFixed(2) + 'M | ' + processed.distancePercent + '%');
           } else {
+            // New position in trackedPositions
             trackedPositions.unshift(processed);
-            console.log('🚨 NEW POSITION: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | $' + (processed.positionUSD/1000000).toFixed(2) + 'M | ' + processed.distancePercent + '% | Age: ' + formatWalletAge(walletAgeDays));
-            // Send alert for new position
-            sendAlerts(processed);
+            
+            // Alert if:
+            // 1. First time seeing AND trade is for same coin, OR
+            // 2. Potential vault attack (shitcoin $2M+) - NEVER miss these!
+            if (!knownPositionKeys.has(key)) {
+              knownPositionKeys.add(key);
+              
+              if (pos.coin === tradeCoin || isPotentialVaultAttack) {
+                console.log('🚨 NEW POSITION: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | $' + (processed.positionUSD/1000000).toFixed(2) + 'M | ' + processed.distancePercent + '%' + (isPotentialVaultAttack ? ' ⚠️ SHITCOIN' : ''));
+                sendAlerts(processed);
+              }
+            }
           }
-          positionsFound++;
         }
       }
       trackedPositions.sort((a, b) => a.distanceToLiq - b.distanceToLiq);
-      if (positionsFound === 0) {
-        console.log('ℹ️ ' + address.slice(0, 10) + '... has no at-risk positions (all positions > 15% from liq or < $2M)');
-      }
-    } else {
-      console.log('ℹ️ ' + address.slice(0, 10) + '... has no open positions');
     }
   } catch (err) {
-    console.error('❌ checkAddressImmediately error for ' + address.slice(0, 10) + '...:', err.message);
+    console.error('❌ checkAddressImmediately error:', err.message);
   }
 }
 
@@ -833,17 +855,9 @@ async function refreshPositions() {
       return;
     }
     
-    const oldPositionKeys = new Set(trackedPositions.map(p => p.user + '-' + p.coin));
+    // Just update positions for UI display - NO alerts here
+    // Alerts are ONLY sent from checkAddressImmediately when a new trade is detected
     trackedPositions = await scanPositions([...knownWhaleAddresses].slice(0, CONFIG.MAX_ADDRESSES_TO_SCAN));
-    
-    // Send alerts for new positions
-    for (const pos of trackedPositions) {
-      const key = pos.user + '-' + pos.coin;
-      if (!oldPositionKeys.has(key)) {
-        // New position detected
-        sendAlerts(pos);
-      }
-    }
     
     const longs = trackedPositions.filter(p => p.direction === 'LONG');
     const shorts = trackedPositions.filter(p => p.direction === 'SHORT');
@@ -867,6 +881,13 @@ async function initialize() {
   console.log('⏳ Waiting 5s for whale discovery...');
   await new Promise(r => setTimeout(r, 5000));
   await refreshPositions();
+  
+  // Mark all existing positions as known (so we don't alert for them)
+  for (const pos of trackedPositions) {
+    knownPositionKeys.add(pos.user + '-' + pos.coin);
+  }
+  console.log('📝 Marked ' + knownPositionKeys.size + ' existing positions as known (no alerts for these)');
+  
   setInterval(refreshPositions, CONFIG.REFRESH_INTERVAL);
 
   // Refresh leaderboard every 10 minutes
