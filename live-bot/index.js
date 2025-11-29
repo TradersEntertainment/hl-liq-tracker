@@ -114,29 +114,77 @@ async function sendTelegramAlert(position) {
   if (!telegramBot) return;
 
   try {
-    const direction = position.direction;
-    const emoji = direction === 'LONG' ? '🟢' : '🔴';
-    const distanceEmoji = position.distancePercent < 5 ? '🚨' : '⚠️';
+    const isLong = position.direction === 'LONG';
+    const isCritical = position.distancePercent < 5;
+    const ageDays = position.walletAgeDays;
+    const isBrandNew = ageDays !== null && ageDays === 0;
+    const isNewWallet = ageDays !== null && ageDays < 7;
+    const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
+    const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
 
-    let message = `${distanceEmoji} *LIQUIDATION ALERT* ${distanceEmoji}\n\n`;
-    message += `${emoji} *${position.coin}* ${direction}\n`;
-    message += `💰 Size: *$${(position.positionUSD / 1000000).toFixed(2)}M*\n`;
-    message += `📉 Distance to Liq: *${position.distancePercent}%*\n`;
-    message += `🎯 Entry: $${position.entryPrice.toFixed(4)} → Mark: $${position.markPrice.toFixed(4)}\n`;
-    message += `⚡ Liquidation: $${position.liqPrice.toFixed(4)}\n`;
-    message += `📊 Leverage: ${position.leverage}x\n`;
-    message += `💵 PnL: ${position.unrealizedPnl >= 0 ? '+' : ''}$${(position.unrealizedPnl / 1000).toFixed(1)}K\n\n`;
+    // Build message parts
+    let lines = [];
 
-    if (position.walletAgeDays !== null) {
-      message += `🕐 Wallet Age: ${formatWalletAge(position.walletAgeDays)}\n`;
+    // Header based on situation
+    if (isPotentialVaultAttack) {
+      lines.push('🚨🚨🚨 *HYPERVAULT ATTACK ALERT* 🚨🚨🚨');
+      lines.push('');
+    } else if (isShitcoinBet) {
+      lines.push('🎰 *DEGEN WHALE SPOTTED* 🎰');
+      lines.push('');
+    } else if (isBrandNew) {
+      lines.push('👶🔥 *FRESH WALLET ALERT* 🔥👶');
+      lines.push('⚠️ _Possible insider or exploit activity_');
+      lines.push('');
     }
 
+    // Main position info with visual box
+    const dirIcon = isLong ? '🟢' : '🔴';
+    const dangerIcon = isCritical ? '💀' : '⚠️';
+
+    lines.push(dangerIcon + ' *' + position.coin + ' ' + position.direction + '* ' + dangerIcon);
+    lines.push('━━━━━━━━━━━━━━━━');
+
+    // Whale history status
     if (position.allTimePnl !== null) {
-      const pnlEmoji = position.allTimePnl > 0 ? '📈' : '📉';
-      message += `${pnlEmoji} All-time PnL: ${position.allTimePnl >= 0 ? '+' : ''}$${(position.allTimePnl / 1000).toFixed(0)}K\n`;
+      const pnlValue = position.allTimePnl;
+      const pnlAbs = Math.abs(pnlValue);
+      let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(2) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
+
+      if (pnlValue > 0) {
+        lines.push('👑 *HISTORICALLY WINNER WHALE*');
+        lines.push('📈 All-Time: *+' + pnlStr + '*');
+      } else {
+        lines.push('🎲 *HISTORICALLY LOSER WHALE*');
+        lines.push('📉 All-Time: *-' + pnlStr + '*');
+      }
+      lines.push('');
     }
 
-    message += `\n🔗 [View on Hypurrscan](${getHypurrscanUrl(position.user)})`;
+    // Position details
+    lines.push('💎 Size: *$' + (position.positionUSD / 1000000).toFixed(2) + 'M*');
+    lines.push('⚡ Leverage: *' + position.leverage + 'x*');
+    lines.push('🎯 Distance to Liq: *' + position.distancePercent + '%*');
+    lines.push('');
+
+    // Price info
+    lines.push('📊 Entry: `$' + formatPriceCompact(position.entryPrice) + '`');
+    lines.push('💀 Liquidation: `$' + formatPriceCompact(position.liqPrice) + '`');
+    lines.push('');
+
+    // Wallet age
+    if (isBrandNew) {
+      lines.push('🆕 Wallet Age: *BRAND NEW* (<1 day)');
+    } else if (isNewWallet) {
+      lines.push('👶 Wallet Age: *' + ageDays + ' days*');
+    } else if (ageDays !== null) {
+      lines.push('🕐 Wallet Age: ' + formatWalletAge(ageDays));
+    }
+
+    lines.push('');
+    lines.push('🔗 [View on Hypurrscan](' + getHypurrscanUrl(position.user) + ')');
+
+    const message = lines.join('\n');
 
     await telegramBot.sendMessage(CONFIG.TELEGRAM_CHAT_ID, message, {
       parse_mode: 'Markdown',
@@ -156,27 +204,61 @@ async function sendTwitterAlert(position) {
   if (!twitter) return;
 
   try {
-    const direction = position.direction;
-    const emoji = direction === 'LONG' ? '🟢' : '🔴';
-    const distanceEmoji = position.distancePercent < 5 ? '🚨' : '⚠️';
+    const isLong = position.direction === 'LONG';
+    const isCritical = position.distancePercent < 5;
+    const ageDays = position.walletAgeDays;
+    const isBrandNew = ageDays !== null && ageDays === 0;
+    const isNewWallet = ageDays !== null && ageDays < 7;
+    const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 2000000;
+    const isPotentialVaultAttack = isShitcoin(position.coin) && position.positionUSD >= 10000000;
 
-    let tweet = `${distanceEmoji} LIQUIDATION ALERT\n\n`;
-    tweet += `${emoji} ${position.coin} ${direction}\n`;
-    tweet += `💰 Size: $${(position.positionUSD / 1000000).toFixed(2)}M\n`;
-    tweet += `📉 Distance: ${position.distancePercent}%\n`;
-    tweet += `⚡ Liq: $${position.liqPrice.toFixed(4)}\n`;
-    tweet += `📊 ${position.leverage}x leverage\n\n`;
+    let lines = [];
 
-    if (position.walletAgeDays !== null) {
-      tweet += `🕐 Wallet Age: ${formatWalletAge(position.walletAgeDays)}\n`;
+    // Header
+    if (isPotentialVaultAttack) {
+      lines.push('🚨🚨🚨 HYPERVAULT ATTACK ALERT 🚨🚨🚨\n');
+    } else if (isShitcoinBet) {
+      lines.push('🎰 DEGEN WHALE SPOTTED 🎰\n');
+    } else if (isBrandNew) {
+      lines.push('👶🔥 FRESH WALLET ALERT 🔥👶');
+      lines.push('⚠️ Possible insider/exploit\n');
     }
 
+    const dirIcon = isLong ? '🟢' : '🔴';
+    const dangerIcon = isCritical ? '💀' : '⚠️';
+
+    lines.push(dangerIcon + ' ' + position.coin + ' ' + position.direction);
+
+    // Whale history
     if (position.allTimePnl !== null) {
-      const pnlEmoji = position.allTimePnl > 0 ? '📈' : '📉';
-      tweet += `${pnlEmoji} All-time: ${position.allTimePnl >= 0 ? '+' : ''}$${(position.allTimePnl / 1000).toFixed(0)}K\n`;
+      const pnlValue = position.allTimePnl;
+      const pnlAbs = Math.abs(pnlValue);
+      let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(2) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
+
+      if (pnlValue > 0) {
+        lines.push('👑 WINNER WHALE (+' + pnlStr + ')');
+      } else {
+        lines.push('🎲 LOSER WHALE (-' + pnlStr + ')');
+      }
     }
 
-    tweet += `\n${getHypurrscanUrl(position.user)}`;
+    lines.push('');
+    lines.push('💎 Size: $' + (position.positionUSD / 1000000).toFixed(2) + 'M');
+    lines.push('⚡ ' + position.leverage + 'x leverage');
+    lines.push('🎯 Distance: ' + position.distancePercent + '%');
+    lines.push('💀 Liq: $' + formatPriceCompact(position.liqPrice));
+
+    if (isBrandNew) {
+      lines.push('\n🆕 BRAND NEW WALLET (<1 day)');
+    } else if (isNewWallet) {
+      lines.push('\n👶 Wallet: ' + ageDays + ' days old');
+    } else if (ageDays !== null) {
+      lines.push('\n🕐 Wallet: ' + formatWalletAge(ageDays));
+    }
+
+    lines.push('\n' + getHypurrscanUrl(position.user));
+
+    const tweet = lines.join('\n');
 
     const requestData = {
       url: 'https://api.twitter.com/2/tweets',
@@ -202,13 +284,29 @@ async function sendTwitterAlert(position) {
 // ============================================
 // HELPERS
 // ============================================
+const TOP_COINS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK', 'NEAR'];
+
+function isShitcoin(coin) {
+  return !TOP_COINS.includes(coin.toUpperCase());
+}
+
 function getHypurrscanUrl(address) {
   return `https://hypurrscan.io/address/${address}`;
 }
 
+function formatPriceCompact(price) {
+  if (!price) return '?';
+  if (price >= 10000) return price.toFixed(0);
+  if (price >= 100) return price.toFixed(1);
+  if (price >= 1) return price.toFixed(2);
+  if (price >= 0.01) return price.toFixed(4);
+  return price.toFixed(6);
+}
+
 function formatWalletAge(days) {
-  if (days === null) return 'Unknown';
-  if (days < 1) return '<1 day';
+  if (days === null || days === undefined) return 'Unknown';
+  if (days === 0) return 'Brand New (<1 day)';
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'}`;
   if (days < 30) return `${Math.floor(days)} days`;
   if (days < 365) return `${Math.floor(days / 30)} months`;
   return `${Math.floor(days / 365)} years`;
@@ -312,14 +410,20 @@ async function checkPosition(address, coin) {
 async function getWalletAge(address) {
   try {
     const response = await axios.post(CONFIG.HYPERLIQUID_API, {
-      type: 'userFunding',
+      type: 'userFillsByTime',
       user: address,
-      startTime: 0
+      startTime: 0,
+      endTime: Date.now()
     });
-    if (response.data && response.data.length > 0) {
-      const firstFunding = response.data[response.data.length - 1];
-      const ageMs = Date.now() - firstFunding.time;
-      return ageMs / (1000 * 60 * 60 * 24);
+
+    if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+      let earliestTime = Date.now();
+      for (const fill of response.data) {
+        if (fill.time && fill.time < earliestTime) earliestTime = fill.time;
+      }
+
+      const ageDays = Math.floor((Date.now() - earliestTime) / (1000 * 60 * 60 * 24));
+      return ageDays;
     }
     return null;
   } catch (err) {
