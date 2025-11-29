@@ -1,0 +1,20 @@
+{
+  "name": "hl-live-bot",
+  "version": "1.0.0",
+  "description": "Hyperliquid live trade monitoring and notification bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "pg": "^8.11.3",
+    "node-telegram-bot-api": "^0.64.0",
+    "oauth-1.0a": "^2.2.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
