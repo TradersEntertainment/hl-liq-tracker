@@ -11,6 +11,7 @@ Hyperliquid üzerinde gerçek zamanlı büyük trade'leri izleyen ve likidasyona
 - ✅ Telegram ve Twitter bildirimleri
 - ✅ 24 saat cooldown (aynı pozisyon için tekrar bildirim yok)
 - ✅ Ping-pong keep-alive ile stabil WebSocket bağlantısı
+- ✅ HTTP health check endpoint (Railway için)
 - ✅ Railway'de kolay deploy
 
 ## Kurulum
@@ -102,10 +103,31 @@ node index.js
 - Stabil WebSocket bağlantısı
 - Gerçek zamanlı tespit
 
+## Health Check Endpoint
+
+Bot, Railway için HTTP health check endpoint sağlar:
+
+**GET /** veya **GET /health**
+
+Örnek yanıt:
+```json
+{
+  "status": "ok",
+  "uptime": "1234s",
+  "websocket": "connected",
+  "trades_received": 15420,
+  "last_trade": "2024-11-29T12:34:56.789Z",
+  "prices_loaded": 476
+}
+```
+
+Bu sayede Railway bot'un sağlıklı çalıştığını anlayabilir ve SIGTERM göndermez.
+
 ## Environment Variables
 
 | Variable | Açıklama | Zorunlu |
 |----------|----------|---------|
+| `PORT` | HTTP server port (Railway otomatik set eder) | Hayır (default: 3000) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token | Evet |
 | `TELEGRAM_CHAT_ID` | Telegram chat/channel ID | Evet |
 | `TWITTER_API_KEY` | Twitter API key | Opsiyonel |

@@ -4,6 +4,7 @@ const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
 const crypto = require('crypto');
 const OAuth = require('oauth-1.0a');
+const http = require('http');
 
 // ============================================
 // CONFIG
@@ -409,6 +410,10 @@ function connectWebSocket() {
 function processTrades(trades) {
   if (!trades || !Array.isArray(trades)) return;
 
+  // Track for health check
+  tradesReceived += trades.length;
+  lastTradeTime = Date.now();
+
   // Log occasionally to confirm WebSocket is working
   if (Math.random() < 0.05) {
     console.log('📡 WebSocket: Received', trades.length, 'trades');
@@ -433,6 +438,38 @@ function processTrades(trades) {
     }
   }
 }
+
+// ============================================
+// HTTP HEALTH CHECK (for Railway)
+// ============================================
+let botStartTime = Date.now();
+let lastTradeTime = null;
+let tradesReceived = 0;
+
+const server = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    const uptime = Math.floor((Date.now() - botStartTime) / 1000);
+    const wsConnected = ws && ws.readyState === 1;
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      uptime: uptime + 's',
+      websocket: wsConnected ? 'connected' : 'disconnected',
+      trades_received: tradesReceived,
+      last_trade: lastTradeTime ? new Date(lastTradeTime).toISOString() : 'none',
+      prices_loaded: Object.keys(allMids).length
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not found');
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log('✅ HTTP server listening on port', PORT);
+});
 
 // ============================================
 // STARTUP
@@ -460,14 +497,20 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received, closing...');
   if (ws) ws.close();
   if (dbClient) dbClient.end();
-  process.exit(0);
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
 });
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, closing...');
   if (ws) ws.close();
   if (dbClient) dbClient.end();
-  process.exit(0);
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
 });
 
 start();
