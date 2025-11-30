@@ -831,16 +831,18 @@ function connectWebSocket() {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data);
+
+        // Log all message types for debugging
         if (msg.channel === 'subscriptionResponse') {
-          console.log('✅ Subscribed to trades stream');
-        }
-        if (msg.channel === 'trades' && msg.data) {
-          // Log every 100 trades to confirm WebSocket is working
-          if (Math.random() < 0.01) {
-            console.log('📡 WebSocket: Received ' + msg.data.length + ' trades');
-          }
+          console.log('✅ Subscribed to trades stream:', JSON.stringify(msg));
+        } else if (msg.channel === 'trades' && msg.data) {
+          // Log every trade batch (not randomly)
+          console.log('📡 WebSocket: Received ' + msg.data.length + ' trades');
           processTradesForDiscovery(msg.data);
           processLiquidations(msg.data);
+        } else {
+          // Log unknown message types
+          console.log('🔍 WebSocket message:', msg.channel || 'unknown', JSON.stringify(msg).slice(0, 200));
         }
       } catch (e) {
         console.error('WebSocket message error:', e.message);
@@ -871,35 +873,48 @@ function connectWebSocket() {
 }
 
 function processTradesForDiscovery(trades) {
-  if (!trades || !Array.isArray(trades)) return;
-  
+  if (!trades || !Array.isArray(trades)) {
+    console.log('⚠️ processTradesForDiscovery: Invalid trades data');
+    return;
+  }
+
+  let processedCount = 0;
+  let whaleTradeCount = 0;
+
   for (const trade of trades) {
     const sz = parseFloat(trade.sz || 0);
     const px = parseFloat(trade.px || 0);
     if (!sz || !px) continue;
-    
+
     const tradeValue = Math.abs(sz) * px;
     if (tradeValue < CONFIG.MIN_TRADE_USD) continue;
-    
+
+    processedCount++;
+
     const users = trade.users || [];
     for (const user of users) {
       if (!user || user.length < 10) continue;
-      
+
       const addrLower = user.toLowerCase();
       const isNewWhale = !knownWhaleAddresses.has(addrLower);
-      
+
       knownWhaleAddresses.add(addrLower);
       addressLastSeen.set(addrLower, Date.now());
       addressTradeVolume.set(addrLower, (addressTradeVolume.get(addrLower) || 0) + tradeValue);
-      
+
       saveWhaleToDb(addrLower, tradeValue);
 
       // Check positions for trades $200K+ (lowered threshold)
       if (tradeValue >= 200000) {
+        whaleTradeCount++;
         console.log('🐋 ' + (isNewWhale ? 'NEW ' : '') + 'Trade: ' + addrLower.slice(0,10) + '... | ' + trade.coin + ' | $' + (tradeValue/1000).toFixed(0) + 'K');
         checkAddressImmediately(addrLower, trade.coin, tradeValue);
       }
     }
+  }
+
+  if (processedCount > 0) {
+    console.log('📊 Processed ' + processedCount + ' trades (≥$100K), ' + whaleTradeCount + ' whale trades (≥$200K)');
   }
 }
 
@@ -1032,6 +1047,8 @@ function processLiquidations(trades) {
 // ============================================
 // SCANNING
 // ============================================
+let isInitialLoad = true; // Flag to prevent notification spam on startup
+
 async function scanPositions(addresses) {
   const results = [];
   for (let i = 0; i < addresses.length; i += 10) {
@@ -1057,6 +1074,12 @@ async function scanPositions(addresses) {
               }
               positions.push(processed);
             }
+
+            // Mark all existing positions as "known" during initial load
+            if (isInitialLoad && assetPos.position.szi !== 0) {
+              const posKey = address.toLowerCase() + '-' + assetPos.position.coin;
+              knownPositions.set(posKey, Date.now());
+            }
           }
           return positions;
         }
@@ -1080,6 +1103,13 @@ async function refreshPositions() {
   trackedPositions = await scanPositions([...knownWhaleAddresses].slice(0, CONFIG.MAX_ADDRESSES_TO_SCAN));
   console.log('✅ Found ' + trackedPositions.length + ' at-risk (' + trackedPositions.filter(p => p.dangerLevel === 'CRITICAL').length + ' critical)');
   console.log('📊 Total whales tracked: ' + knownWhaleAddresses.size);
+
+  // After first scan, mark initial load as complete
+  if (isInitialLoad) {
+    isInitialLoad = false;
+    console.log('✅ Initial load complete. Marked ' + knownPositions.size + ' existing positions as known.');
+    console.log('🎯 Now monitoring for NEW positions opened after this point...');
+  }
 }
 
 async function initialize() {
