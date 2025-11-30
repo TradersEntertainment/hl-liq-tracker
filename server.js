@@ -809,6 +809,13 @@ let ws = null;
 let wsReconnectAttempts = 0;
 let wsPingInterval = null;
 
+// Top coins to monitor (expand as needed)
+const MONITORED_COINS = [
+  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'MATIC',
+  'LINK', 'NEAR', 'UNI', 'ATOM', 'LTC', 'FTM', 'ALGO', 'AAVE', 'ARB', 'OP',
+  'SUI', 'APT', 'INJ', 'TIA', 'SEI', 'WLD', 'ORDI', 'RNDR', 'PEPE', 'WIF'
+];
+
 function connectWebSocket() {
   try {
     ws = new WebSocket(CONFIG.HYPERLIQUID_WS);
@@ -816,8 +823,15 @@ function connectWebSocket() {
     ws.on('open', () => {
       console.log('✅ WebSocket connected');
       wsReconnectAttempts = 0;
-      // Subscribe to ALL trades (coin: null means all coins)
-      ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades' } }));
+
+      // Subscribe to trades for each monitored coin
+      console.log('📡 Subscribing to ' + MONITORED_COINS.length + ' coins...');
+      MONITORED_COINS.forEach(coin => {
+        ws.send(JSON.stringify({
+          method: 'subscribe',
+          subscription: { type: 'trades', coin: coin }
+        }));
+      });
 
       // Keep-alive: ping every 30 seconds
       if (wsPingInterval) clearInterval(wsPingInterval);
@@ -832,20 +846,26 @@ function connectWebSocket() {
       try {
         const msg = JSON.parse(data);
 
-        // Log all message types for debugging
+        // Handle different message types
         if (msg.channel === 'subscriptionResponse') {
-          console.log('✅ Subscribed to trades stream:', JSON.stringify(msg));
+          // Subscription confirmation
+          if (msg.data && msg.data.method === 'subscribe') {
+            console.log('✅ Subscribed:', msg.data.subscription?.coin || 'unknown');
+          }
+        } else if (msg.channel === 'error') {
+          // API errors
+          console.error('❌ WebSocket API Error:', msg.data);
         } else if (msg.channel === 'trades' && msg.data) {
-          // Log every trade batch (not randomly)
-          console.log('📡 WebSocket: Received ' + msg.data.length + ' trades');
+          // Trade data received
+          console.log('📡 Trades: ' + msg.data.length + ' trades for ' + (msg.data[0]?.coin || 'unknown'));
           processTradesForDiscovery(msg.data);
           processLiquidations(msg.data);
         } else {
-          // Log unknown message types
-          console.log('🔍 WebSocket message:', msg.channel || 'unknown', JSON.stringify(msg).slice(0, 200));
+          // Unknown message type
+          console.log('🔍 Unknown message:', msg.channel || 'no-channel', JSON.stringify(msg).slice(0, 200));
         }
       } catch (e) {
-        console.error('WebSocket message error:', e.message);
+        console.error('WebSocket parse error:', e.message);
       }
     });
     
