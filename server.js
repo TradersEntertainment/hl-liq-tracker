@@ -448,6 +448,191 @@ async function sendAlerts(position) {
   await Promise.all([sendTelegramAlert(position), sendTwitterAlert(position)]);
 }
 
+// New Position Alerts - sent when whale opens ANY new position
+async function sendNewPositionAlert(position) {
+  // Only send for positions >= $500K
+  if (position.positionUSD < 500000) return;
+
+  // Check cooldown for new position alerts (separate from danger alerts)
+  const alertKey = 'new-' + position.user + '-' + position.coin;
+  const lastAlert = sentAlerts.get(alertKey);
+  if (lastAlert && (Date.now() - lastAlert) < CONFIG.ALERT_COOLDOWN) return;
+
+  await Promise.all([sendTelegramNewPosition(position), sendTwitterNewPosition(position)]);
+  sentAlerts.set(alertKey, Date.now());
+}
+
+async function sendTelegramNewPosition(position) {
+  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHANNEL_ID) return;
+
+  const isLong = position.direction === 'LONG';
+  const ageDays = position.walletAgeDays;
+  const isBrandNew = ageDays !== null && ageDays === 0;
+  const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 1000000;
+
+  let lines = [];
+
+  // Header
+  lines.push('🆕 *NEW WHALE POSITION OPENED* 🐋');
+
+  if (isBrandNew) {
+    lines.push('👶 _Brand New Wallet!_');
+  }
+  if (isShitcoinBet) {
+    lines.push('🎰 _Degen Shitcoin Bet!_');
+  }
+
+  lines.push('');
+
+  // Main position info
+  const dirIcon = isLong ? '🟢' : '🔴';
+  lines.push(dirIcon + ' *' + position.coin + ' ' + position.direction + '* ' + dirIcon);
+  lines.push('━━━━━━━━━━━━━━━━');
+
+  // Whale history
+  if (position.allTimePnl !== null) {
+    const pnlValue = position.allTimePnl;
+    const pnlAbs = Math.abs(pnlValue);
+    let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(2) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
+
+    if (position.isProfitableWhale) {
+      lines.push('👑 Winner Whale · +' + pnlStr);
+    } else {
+      lines.push('🎲 Loser Whale · -' + pnlStr);
+    }
+    lines.push('');
+  }
+
+  // Position details
+  lines.push('💎 Size: *$' + (position.positionUSD / 1000000).toFixed(2) + 'M*');
+  lines.push('⚡ Leverage: *' + position.leverage + 'x*');
+  lines.push('📊 Entry: `$' + formatPriceCompact(position.entryPrice) + '`');
+  lines.push('🎯 Distance to Liq: *' + position.distancePercent + '%*');
+
+  if (position.dangerLevel === 'CRITICAL') {
+    lines.push('⚠️ _Already at CRITICAL distance!_');
+  } else if (position.dangerLevel === 'WARNING') {
+    lines.push('⚠️ _Already at WARNING distance!_');
+  }
+
+  lines.push('');
+
+  // Wallet info
+  if (isBrandNew) {
+    lines.push('🆕 Wallet: *BRAND NEW* (<1 day)');
+  } else if (ageDays !== null) {
+    lines.push('🕐 Wallet: ' + formatWalletAge(ageDays));
+  }
+
+  lines.push('');
+  lines.push('🔗 [View on Hypurrscan](' + position.hypurrscanUrl + ')');
+  lines.push('');
+  lines.push('#NewPosition #Hyperliquid #' + position.coin);
+
+  const message = lines.join('\n');
+
+  try {
+    await axios.post('https://api.telegram.org/bot' + CONFIG.TELEGRAM_BOT_TOKEN + '/sendMessage', {
+      chat_id: CONFIG.TELEGRAM_CHANNEL_ID,
+      text: message,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    });
+    sentNotifications.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+      platform: 'Telegram',
+      type: 'new_position',
+      coin: position.coin,
+      direction: position.direction,
+      size: position.positionUSD,
+      distance: position.distancePercent,
+      address: position.userShort,
+      timestamp: Date.now()
+    });
+    if (sentNotifications.length > 50) sentNotifications.pop();
+    console.log('📨 NEW POS Telegram: ' + position.coin + ' ' + position.direction + ' | $' + (position.positionUSD/1000000).toFixed(2) + 'M');
+  } catch (error) {
+    console.error('Telegram new position error:', error.response?.data?.description || error.message);
+  }
+}
+
+async function sendTwitterNewPosition(position) {
+  if (!CONFIG.TWITTER_API_KEY || !CONFIG.TWITTER_ACCESS_TOKEN || !oauthLib) return;
+
+  const isLong = position.direction === 'LONG';
+  const ageDays = position.walletAgeDays;
+  const isBrandNew = ageDays !== null && ageDays === 0;
+  const isShitcoinBet = isShitcoin(position.coin) && position.positionUSD >= 1000000;
+
+  let lines = [];
+
+  // Header
+  lines.push('🆕 NEW WHALE POSITION');
+
+  if (isBrandNew) {
+    lines.push('👶 Brand New Wallet!');
+  }
+  if (isShitcoinBet) {
+    lines.push('🎰 Degen Shitcoin!');
+  }
+
+  lines.push('');
+
+  // Main info
+  const dirIcon = isLong ? '🟢' : '🔴';
+  lines.push(dirIcon + ' ' + position.coin + ' ' + position.direction);
+
+  // Whale status
+  if (position.allTimePnl !== null) {
+    const pnlAbs = Math.abs(position.allTimePnl);
+    let pnlStr = pnlAbs >= 1000000 ? '$' + (pnlAbs / 1000000).toFixed(1) + 'M' : '$' + (pnlAbs / 1000).toFixed(0) + 'K';
+    if (position.isProfitableWhale) {
+      lines.push('👑 Winner (+' + pnlStr + ')');
+    } else {
+      lines.push('🎲 Loser (-' + pnlStr + ')');
+    }
+  }
+
+  lines.push('');
+  lines.push(dirIcon + ' $' + (position.positionUSD / 1000000).toFixed(1) + 'M @ ' + position.leverage + 'x');
+  lines.push('📊 Entry: $' + formatPriceCompact(position.entryPrice));
+  lines.push('🎯 ' + position.distancePercent + '% to liq');
+  lines.push('');
+  lines.push(position.hypurrscanUrl);
+  lines.push('');
+  lines.push('#NewPosition #Hyperliquid #' + position.coin);
+
+  const tweet = lines.join('\n').slice(0, 280);
+
+  try {
+    const oauth = oauthLib({
+      consumer: { key: CONFIG.TWITTER_API_KEY, secret: CONFIG.TWITTER_API_SECRET },
+      signature_method: 'HMAC-SHA1',
+      hash_function(baseString, key) { return crypto.createHmac('sha1', key).update(baseString).digest('base64'); }
+    });
+    const token = { key: CONFIG.TWITTER_ACCESS_TOKEN, secret: CONFIG.TWITTER_ACCESS_SECRET };
+    const url = 'https://api.twitter.com/2/tweets';
+    const authHeader = oauth.toHeader(oauth.authorize({ url, method: 'POST' }, token));
+
+    await axios.post(url, { text: tweet }, { headers: { 'Authorization': authHeader['Authorization'], 'Content-Type': 'application/json' } });
+    sentNotifications.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+      platform: 'Twitter',
+      type: 'new_position',
+      coin: position.coin,
+      direction: position.direction,
+      size: position.positionUSD,
+      distance: position.distancePercent,
+      address: position.userShort,
+      timestamp: Date.now()
+    });
+    if (sentNotifications.length > 50) sentNotifications.pop();
+    console.log('🐦 NEW POS Twitter: ' + position.coin + ' ' + position.direction);
+  } catch (error) {
+    console.error('Twitter new position error:', error.response?.status, error.response?.data?.detail || error.message);
+  }
+}
+
 // ============================================
 // HYPERLIQUID API
 // ============================================
@@ -491,10 +676,13 @@ async function getCachedAllTimePnl(address) {
 let allMids = {};
 let assetMeta = [];
 let trackedPositions = [];
+let recentNewPositions = []; // Track ALL new whale positions (not just dangerous ones)
 let knownWhaleAddresses = new Set();
 let addressLastSeen = new Map();
 let addressTradeVolume = new Map();
+let knownPositions = new Map(); // Track position keys to detect truly new positions
 
+// Process position for danger tracking (existing function - only tracks dangerous positions)
 function processPosition(userAddress, position, currentPrice, accountData = null) {
   const coin = position.coin;
   const szi = parseFloat(position.szi);
@@ -504,19 +692,19 @@ function processPosition(userAddress, position, currentPrice, accountData = null
   const liqPx = parseFloat(position.liquidationPx);
   const entryPx = parseFloat(position.entryPx);
   const markPrice = currentPrice || allMids[coin];
-  
+
   if (!markPrice || !liqPx) return null;
-  
+
   const positionUSD = Math.abs(szi) * markPrice;
   if (positionUSD < CONFIG.MIN_POSITION_USD) return null;
-  
+
   const isLong = szi > 0;
   const distanceToLiq = isLong ? (markPrice - liqPx) / markPrice : (liqPx - markPrice) / markPrice;
-  
+
   if (distanceToLiq > CONFIG.DANGER_THRESHOLD_10 || distanceToLiq < 0) return null;
-  
+
   const dangerLevel = distanceToLiq <= CONFIG.DANGER_THRESHOLD_5 ? 'CRITICAL' : 'WARNING';
-  
+
   let walletBalance = null, otherPositions = [], totalUnrealizedPnl = 0;
   if (accountData) {
     walletBalance = parseFloat(accountData.marginSummary?.accountValue || 0);
@@ -538,7 +726,69 @@ function processPosition(userAddress, position, currentPrice, accountData = null
       });
     }
   }
-  
+
+  return {
+    user: userAddress, userShort: userAddress.slice(0, 6) + '...' + userAddress.slice(-4),
+    coin, direction: isLong ? 'LONG' : 'SHORT', positionSize: szi, positionUSD,
+    entryPrice: entryPx, markPrice, liqPrice: liqPx, distanceToLiq,
+    distancePercent: (distanceToLiq * 100).toFixed(2), leverage, marginUsed,
+    unrealizedPnl, dangerLevel, timestamp: Date.now(), walletBalance, otherPositions,
+    totalPositionCount: otherPositions.length + 1, totalUnrealizedPnl,
+    allTimePnl: null, isProfitableWhale: false, whaleType: 'UNKNOWN', walletAgeDays: null,
+    hypurrscanUrl: getHypurrscanUrl(userAddress),
+    hyperliquidUrl: getHyperliquidUrl(userAddress)
+  };
+}
+
+// Process ALL positions for new position tracking (no distance filter)
+function processAllPosition(userAddress, position, currentPrice, accountData = null) {
+  const coin = position.coin;
+  const szi = parseFloat(position.szi);
+  const leverage = position.leverage?.value || 1;
+  const marginUsed = parseFloat(position.marginUsed);
+  const unrealizedPnl = parseFloat(position.unrealizedPnl);
+  const liqPx = parseFloat(position.liquidationPx);
+  const entryPx = parseFloat(position.entryPx);
+  const markPrice = currentPrice || allMids[coin];
+
+  if (!markPrice || !liqPx) return null;
+
+  const positionUSD = Math.abs(szi) * markPrice;
+
+  // Lower threshold for new position tracking ($500K instead of $2M)
+  if (positionUSD < 500000) return null;
+
+  const isLong = szi > 0;
+  const distanceToLiq = isLong ? (markPrice - liqPx) / markPrice : (liqPx - markPrice) / markPrice;
+
+  // Don't filter by distance - track all positions
+  if (distanceToLiq < 0) return null;
+
+  const dangerLevel = distanceToLiq <= CONFIG.DANGER_THRESHOLD_5 ? 'CRITICAL' :
+                       distanceToLiq <= CONFIG.DANGER_THRESHOLD_10 ? 'WARNING' : 'SAFE';
+
+  let walletBalance = null, otherPositions = [], totalUnrealizedPnl = 0;
+  if (accountData) {
+    walletBalance = parseFloat(accountData.marginSummary?.accountValue || 0);
+    if (accountData.assetPositions) {
+      accountData.assetPositions.forEach(ap => {
+        const p = ap.position;
+        const pSzi = parseFloat(p.szi);
+        if (pSzi !== 0) {
+          const pPnl = parseFloat(p.unrealizedPnl) || 0;
+          totalUnrealizedPnl += pPnl;
+          if (p.coin !== coin) {
+            otherPositions.push({
+              coin: p.coin, direction: pSzi > 0 ? 'LONG' : 'SHORT',
+              positionUSD: Math.abs(pSzi) * (allMids[p.coin] || 0),
+              unrealizedPnl: pPnl, leverage: p.leverage?.value || 1
+            });
+          }
+        }
+      });
+    }
+  }
+
   return {
     user: userAddress, userShort: userAddress.slice(0, 6) + '...' + userAddress.slice(-4),
     coin, direction: isLong ? 'LONG' : 'SHORT', positionSize: szi, positionUSD,
@@ -658,13 +908,15 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
     const state = await getUserState(address);
     if (state && state.assetPositions && state.assetPositions.length > 0) {
       const [allTimePnl, walletAgeDays] = await Promise.all([getCachedAllTimePnl(address), getWalletAge(address)]);
+
       for (const assetPos of state.assetPositions) {
         const pos = assetPos.position;
+
+        // Process for danger tracking (existing logic)
         const processed = processPosition(address, pos, allMids[pos.coin], state);
         if (processed) {
           processed.allTimePnl = allTimePnl;
           processed.walletAgeDays = walletAgeDays;
-          // Get position open time
           const openTime = await getPositionOpenTime(address, pos.coin, processed.entryPrice);
           processed.timestamp = openTime;
 
@@ -675,13 +927,48 @@ async function checkAddressImmediately(address, tradeCoin, tradeValue) {
           const existingIdx = trackedPositions.findIndex(p => p.user === address && p.coin === pos.coin);
           if (existingIdx >= 0) trackedPositions[existingIdx] = processed;
           else trackedPositions.unshift(processed);
-          console.log('🚨 DETECT: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | Age: ' + formatWalletAge(walletAgeDays));
+          console.log('🚨 DANGER: ' + processed.userShort + ' | ' + processed.coin + ' ' + processed.direction + ' | Age: ' + formatWalletAge(walletAgeDays));
           if (existingIdx < 0) sendAlerts(processed);
         }
+
+        // ALSO process for new position tracking (ALL positions, not just dangerous)
+        const allProcessed = processAllPosition(address, pos, allMids[pos.coin], state);
+        if (allProcessed) {
+          allProcessed.allTimePnl = allTimePnl;
+          allProcessed.walletAgeDays = walletAgeDays;
+          const openTime = await getPositionOpenTime(address, pos.coin, allProcessed.entryPrice);
+          allProcessed.timestamp = openTime;
+
+          if (allTimePnl !== null) {
+            allProcessed.isProfitableWhale = allTimePnl > 0;
+            allProcessed.whaleType = allTimePnl > 0 ? 'PROFITABLE' : 'LOSING';
+          }
+
+          // Check if this is a truly NEW position
+          const posKey = address.toLowerCase() + '-' + pos.coin;
+          const isNewPosition = !knownPositions.has(posKey);
+
+          if (isNewPosition) {
+            // Mark as known
+            knownPositions.set(posKey, Date.now());
+
+            // Add to recent new positions list
+            recentNewPositions.unshift(allProcessed);
+            if (recentNewPositions.length > 100) recentNewPositions.pop();
+
+            console.log('🆕 NEW POS: ' + allProcessed.userShort + ' | ' + allProcessed.coin + ' ' + allProcessed.direction + ' | $' + (allProcessed.positionUSD/1000000).toFixed(2) + 'M @ ' + allProcessed.leverage + 'x');
+
+            // Send new position alert
+            sendNewPositionAlert(allProcessed);
+          }
+        }
       }
+
       trackedPositions.sort((a, b) => a.distanceToLiq - b.distanceToLiq);
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('checkAddressImmediately error:', err.message);
+  }
 }
 
 // ============================================
@@ -1144,6 +1431,28 @@ app.get('/api/sent-notifications', (req, res) => {
     total: sentNotifications.length,
     recent: recentCount,
     notifications: sentNotifications.slice(0, 30)
+  });
+});
+
+app.get('/api/new-positions', (req, res) => {
+  const { limit = 50 } = req.query;
+  const limitNum = parseInt(limit);
+
+  // Return recent new positions
+  const positions = recentNewPositions.slice(0, limitNum);
+
+  // Separate by direction
+  const longs = positions.filter(p => p.direction === 'LONG');
+  const shorts = positions.filter(p => p.direction === 'SHORT');
+
+  res.json({
+    count: positions.length,
+    longs,
+    shorts,
+    longsCount: longs.length,
+    shortsCount: shorts.length,
+    longsValue: longs.reduce((sum, p) => sum + p.positionUSD, 0),
+    shortsValue: shorts.reduce((sum, p) => sum + p.positionUSD, 0)
   });
 });
 
