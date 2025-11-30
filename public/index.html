@@ -615,6 +615,9 @@
 
     .liq-badge.long { background: rgba(16, 185, 129, 0.2); color: var(--green); }
     .liq-badge.short { background: rgba(239, 68, 68, 0.2); color: var(--red); }
+    .liq-badge.critical { background: rgba(239, 68, 68, 0.3); color: var(--red); }
+    .liq-badge.warning { background: rgba(245, 158, 11, 0.3); color: var(--yellow); }
+    .liq-badge.safe { background: rgba(16, 185, 129, 0.2); color: var(--green); }
 
     .liq-price {
       font-size: 0.65rem;
@@ -1037,6 +1040,28 @@
       </div>
 
       <div class="side-panels">
+        <!-- New Positions Panel -->
+        <div class="liq-panel">
+          <div class="liq-header">🆕 New Whale Positions</div>
+          <div class="liq-stats">
+            <div class="liq-stat">
+              <div class="liq-stat-label">Total</div>
+              <div class="liq-stat-value" id="newPosCount" style="color: var(--green);">0</div>
+            </div>
+            <div class="liq-stat">
+              <div class="liq-stat-label">Longs</div>
+              <div class="liq-stat-value" id="newPosLongs" style="color: var(--green);">0</div>
+            </div>
+            <div class="liq-stat">
+              <div class="liq-stat-label">Shorts</div>
+              <div class="liq-stat-value" id="newPosShorts" style="color: var(--red);">0</div>
+            </div>
+          </div>
+          <div class="liq-list" id="newPosList" style="max-height: 400px;">
+            <div class="empty-state">No new positions yet</div>
+          </div>
+        </div>
+
         <!-- Sent Notifications Panel -->
         <div class="liq-panel">
           <div class="liq-header">📨 Sent Notifications</div>
@@ -1246,6 +1271,11 @@
 
     async function fetchSentNotifications() {
       const res = await fetch(`${API_BASE}/api/sent-notifications`);
+      return await res.json();
+    }
+
+    async function fetchNewPositions() {
+      const res = await fetch(`${API_BASE}/api/new-positions?limit=50`);
       return await res.json();
     }
 
@@ -1518,12 +1548,61 @@
       `).join('');
     }
 
+    function renderNewPositions(data) {
+      document.getElementById('newPosCount').textContent = data.count || 0;
+      document.getElementById('newPosLongs').textContent = data.longsCount || 0;
+      document.getElementById('newPosShorts').textContent = data.shortsCount || 0;
+
+      const list = document.getElementById('newPosList');
+      const allPositions = [...(data.longs || []), ...(data.shorts || [])];
+
+      if (allPositions.length === 0) {
+        list.innerHTML = '<div class="empty-state">No new positions yet</div>';
+        return;
+      }
+
+      list.innerHTML = allPositions.map(pos => {
+        const dangerClass = pos.dangerLevel === 'CRITICAL' ? 'critical' : pos.dangerLevel === 'WARNING' ? 'warning' : 'safe';
+        const whaleIcon = pos.isProfitableWhale ? '👑' : '🎲';
+        const walletAgeStr = pos.walletAgeDays === 0 ? '👶 NEW' : pos.walletAgeDays < 7 ? `${pos.walletAgeDays}d` : `${Math.floor(pos.walletAgeDays/30)}mo`;
+
+        return `
+          <div class="liq-item">
+            <div class="liq-side ${pos.direction.toLowerCase()}"></div>
+            <div class="liq-info">
+              <div class="liq-coin">
+                ${whaleIcon} ${pos.coin}
+                <span class="liq-badge ${pos.direction.toLowerCase()}">${pos.direction}</span>
+                <span class="liq-badge ${dangerClass}" style="font-size: 10px; margin-left: 4px;">${pos.dangerLevel}</span>
+              </div>
+              <div class="liq-price">
+                ${pos.leverage}x · ${pos.distancePercent}% to liq · ${walletAgeStr}
+              </div>
+            </div>
+            <div class="liq-value">
+              <div class="liq-amount">${formatUSD(pos.positionUSD)}</div>
+              <div class="liq-time">${timeAgo(pos.timestamp)} ago</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
     async function refreshSentNotifications() {
       try {
         const data = await fetchSentNotifications();
         renderSentNotifications(data);
       } catch (err) {
         console.error('Sent notifs refresh error:', err);
+      }
+    }
+
+    async function refreshNewPositions() {
+      try {
+        const data = await fetchNewPositions();
+        renderNewPositions(data);
+      } catch (err) {
+        console.error('New positions refresh error:', err);
       }
     }
 
@@ -1699,10 +1778,12 @@
     refreshData();
     refreshLiquidations();
     refreshSentNotifications();
+    refreshNewPositions();
     fetchLiquidatable();
     setInterval(refreshData, 30000);
     setInterval(refreshLiquidations, 5000);
     setInterval(refreshSentNotifications, 10000);
+    setInterval(refreshNewPositions, 10000); // Refresh new positions every 10s
     setInterval(fetchLiquidatable, 60000);
   </script>
 </body>
